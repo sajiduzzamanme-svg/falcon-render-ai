@@ -14,8 +14,9 @@ import httpx
 
 from .base import ProviderNotConfigured, RenderAdapter, RenderFailed
 from .gemini import fidelity_prompt
+from .http import http_client
 
-_ENDPOINT = "https://openrouter.ai/v1/chat/completions"
+_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 _TIMEOUT_S = 180
 
 
@@ -62,16 +63,16 @@ class OpenRouterRenderAdapter(RenderAdapter):
         }
 
         try:
-            resp = httpx.post(
-                _ENDPOINT,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "HTTP-Referer": "https://falcon-render-ai.local",
-                    "X-Title": "Falcon Render AI",
-                },
-                json=body,
-                timeout=_TIMEOUT_S,
-            )
+            with http_client(_TIMEOUT_S) as client:
+                resp = client.post(
+                    _ENDPOINT,
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "HTTP-Referer": "https://falcon-render-ai.local",
+                        "X-Title": "Falcon Render AI",
+                    },
+                    json=body,
+                )
         except httpx.HTTPError as exc:
             raise RenderFailed(f"OpenRouter request failed: {exc}") from exc
 

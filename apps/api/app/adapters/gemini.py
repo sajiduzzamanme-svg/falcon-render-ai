@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 
 from .base import ProviderNotConfigured, RenderAdapter, RenderFailed
+from .http import http_client
 
 _ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -85,12 +86,12 @@ class GeminiRenderAdapter(RenderAdapter):
         }
 
         try:
-            resp = httpx.post(
-                _ENDPOINT,
-                headers={"x-goog-api-key": self._api_key},
-                json=body,
-                timeout=_TIMEOUT_S,
-            )
+            with http_client(_TIMEOUT_S) as client:
+                resp = client.post(
+                    _ENDPOINT,
+                    headers={"x-goog-api-key": self._api_key},
+                    json=body,
+                )
         except httpx.HTTPError as exc:
             raise RenderFailed(f"Gemini request failed: {exc}") from exc
 

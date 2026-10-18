@@ -195,12 +195,26 @@ def test_health_reports_openrouter_provider(
     assert resp.json()["render_provider"] == "openrouter"
 
 
-def test_generate_with_openrouter_key_accepts_job(
+def test_generate_with_openrouter_key_succeeds(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import time
+
+    from app.adapters.openrouter import OpenRouterRenderAdapter
+
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
-    resp = _upload(client, _png_bytes())
-    assert resp.status_code == 201
-    job_id = resp.json()["id"]
+    monkeypatch.setattr(
+        OpenRouterRenderAdapter, "generate", lambda self, *a: b"fake-png-bytes"
+    )
+    job_id = _upload(client, _png_bytes()).json()["id"]
     resp = client.post(f"/api/v1/renders/{job_id}/generate")
     assert resp.status_code == 202
+    body = {}
+    for _ in range(100):
+        body = client.get(f"/api/v1/renders/{job_id}").json()
+        if body["status"] == "succeeded":
+            break
+        time.sleep(0.05)
+    assert body["status"] == "succeeded"
+    resp = client.get(f"/api/v1/files/{job_id}/render")
+    assert resp.status_code == 200
