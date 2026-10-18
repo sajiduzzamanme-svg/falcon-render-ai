@@ -8,6 +8,7 @@ import {
   getRender,
   type RenderDetail,
 } from "@/lib/api";
+import CompareSlider from "./compare-slider";
 import StatusBadge from "./status-badge";
 
 type Notice = { kind: "warn" | "error" | "info"; text: string } | null;
@@ -116,7 +117,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             className="aspect-[4/3] w-full object-contain bg-slate-50"
           />
           <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Sketch
+            Sketch — geometry source
           </figcaption>
         </figure>
 
@@ -130,6 +131,19 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             Geometry lock — edge map extracted from your sketch
           </figcaption>
         </figure>
+
+        {detail.artifacts.reference && (
+          <figure className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <img
+              src={fileUrl(detail.artifacts.reference)}
+              alt="Style reference image — materials and mood only"
+              className="aspect-[4/3] w-full object-contain bg-slate-50"
+            />
+            <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Style reference — materials &amp; mood only
+            </figcaption>
+          </figure>
+        )}
 
         <figure className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           {detail.artifacts.render ? (
@@ -174,6 +188,20 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
         </figure>
       </div>
 
+      {detail.artifacts.render && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-900">
+            Compare — drag the handle
+          </h3>
+          <CompareSlider
+            beforeSrc={fileUrl(detail.artifacts.sketch)}
+            afterSrc={fileUrl(detail.artifacts.render)}
+            beforeLabel="Sketch"
+            afterLabel="Render"
+          />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
         <StatusBadge status={detail.status} />
         <span className="text-slate-600">
@@ -205,6 +233,22 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
           Updated: <time className="tabular-nums text-slate-900">{formatDate(detail.updated_at)}</time>
         </span>
       </div>
+
+      {detail.artifacts.render && (
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href={fileUrl(detail.artifacts.render)}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+          >
+            Download render
+          </a>
+          <p className="text-xs text-slate-500">
+            Free during beta — sign-up-gated downloads ship with Supabase Auth.
+          </p>
+        </div>
+      )}
 
       {showGenerate && (
         <button

@@ -30,7 +30,12 @@ class OpenRouterRenderAdapter(RenderAdapter):
         return bool(self._api_key and self._api_key.strip())
 
     def generate(
-        self, sketch_path: Path, edge_path: Path, preset: str, style: str
+        self,
+        sketch_path: Path,
+        edge_path: Path,
+        preset: str,
+        style: str,
+        reference_path: Path | None = None,
     ) -> bytes:
         if not self.configured:
             raise ProviderNotConfigured(
@@ -41,25 +46,25 @@ class OpenRouterRenderAdapter(RenderAdapter):
             raw = base64.b64encode(path.read_bytes()).decode("ascii")
             return f"data:image/png;base64,{raw}"
 
+        content: list[dict] = [
+            {
+                "type": "text",
+                "text": fidelity_prompt(
+                    preset, style, has_reference=reference_path is not None
+                ),
+            },
+            {"type": "image_url", "image_url": {"url": _data_url(sketch_path)}},
+            {"type": "image_url", "image_url": {"url": _data_url(edge_path)}},
+        ]
+        if reference_path is not None:
+            content.append(
+                {"type": "image_url", "image_url": {"url": _data_url(reference_path)}}
+            )
+
         body = {
             "model": self._model,
             "modalities": ["image", "text"],
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": fidelity_prompt(preset, style)},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": _data_url(sketch_path)},
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": _data_url(edge_path)},
-                        },
-                    ],
-                }
-            ],
+            "messages": [{"role": "user", "content": content}],
         }
 
         try:

@@ -47,6 +47,7 @@ class RenderCreateResponse(BaseModel):
 class Artifacts(BaseModel):
     sketch: str
     edge: str
+    reference: str | None = None
     render: str | None = None
 
 

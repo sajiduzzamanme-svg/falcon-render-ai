@@ -17,8 +17,47 @@ const ACCEPTED_MIMES = ["image/png", "image/jpeg", "image/webp"];
 const ACCEPTED_EXTS = ["png", "jpg", "jpeg", "webp"];
 const ACCEPT_ATTR = ".png,.jpg,.jpeg,.webp";
 
-const PRESETS: Preset[] = ["daylight", "dusk", "night"];
-const STYLES: Style[] = ["modern", "minimalist", "warm"];
+const PRESETS: { value: Preset; label: string; swatch: string; hint: string }[] = [
+  {
+    value: "daylight",
+    label: "Daylight",
+    swatch: "linear-gradient(135deg,#7dd3fc 0%,#e0f2fe 60%,#fefce8 100%)",
+    hint: "Bright natural light",
+  },
+  {
+    value: "dusk",
+    label: "Dusk",
+    swatch: "linear-gradient(135deg,#312e81 0%,#c2410c 70%,#fbbf24 100%)",
+    hint: "Golden hour, lights on",
+  },
+  {
+    value: "night",
+    label: "Night",
+    swatch: "linear-gradient(135deg,#020617 0%,#1e3a8a 80%,#3b82f6 100%)",
+    hint: "Artificial lighting",
+  },
+];
+
+const STYLES: { value: Style; label: string; swatch: string; hint: string }[] = [
+  {
+    value: "modern",
+    label: "Modern",
+    swatch: "linear-gradient(135deg,#e2e8f0 0%,#94a3b8 100%)",
+    hint: "Clean lines",
+  },
+  {
+    value: "minimalist",
+    label: "Minimalist",
+    swatch: "linear-gradient(135deg,#ffffff 0%,#f1f5f9 100%)",
+    hint: "White surfaces",
+  },
+  {
+    value: "warm",
+    label: "Warm",
+    swatch: "linear-gradient(135deg,#fbbf24 0%,#b45309 100%)",
+    hint: "Wood accents",
+  },
+];
 
 function validateFile(file: File): string | null {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -35,18 +74,145 @@ function validateFile(file: File): string | null {
 
 type HealthState = "checking" | "ok" | "down";
 
-export default function HomePage() {
+function Dropzone({
+  id,
+  title,
+  description,
+  required,
+  file,
+  previewUrl,
+  error,
+  dragging,
+  onPick,
+  onDragState,
+  inputRef,
+}: {
+  id: string;
+  title: string;
+  description: string;
+  required: boolean;
+  file: File | null;
+  previewUrl: string | null;
+  error: string | null;
+  dragging: boolean;
+  onPick: (f: File | null) => void;
+  onDragState: (d: boolean) => void;
+  inputRef: { current: HTMLInputElement | null };
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-semibold text-slate-900">
+          {title}{" "}
+          <span
+            className={`ml-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+              required
+                ? "bg-blue-100 text-blue-800"
+                : "bg-slate-100 text-slate-600"
+            }`}
+          >
+            {required ? "Required" : "Optional"}
+          </span>
+        </h3>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">{description}</p>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${title}: drag and drop, or press Enter to browse`}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          onDragState(true);
+        }}
+        onDragLeave={() => onDragState(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          onDragState(false);
+          onPick(e.dataTransfer.files?.[0] ?? null);
+        }}
+        className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+          dragging
+            ? "border-blue-500 bg-blue-50"
+            : "border-slate-300 bg-slate-50 hover:border-slate-400"
+        }`}
+      >
+        <input
+          ref={inputRef}
+          id={id}
+          type="file"
+          accept={ACCEPT_ATTR}
+          aria-label={title}
+          className="sr-only"
+          onChange={(e) => {
+            onPick(e.target.files?.[0] ?? null);
+            e.target.value = "";
+          }}
+        />
+        {previewUrl && file ? (
+          <img
+            src={previewUrl}
+            alt={`Preview of ${title}`}
+            className="max-h-44 rounded-lg object-contain"
+          />
+        ) : (
+          <>
+            <p className="text-sm font-medium text-slate-700">
+              Drop image here, or click to browse
+            </p>
+            <p className="mt-1 text-xs text-slate-500 tabular-nums">
+              PNG, JPG, WebP — up to 10 MB
+            </p>
+          </>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm font-medium text-red-700">
+          {error}
+        </p>
+      )}
+      {file && !error && (
+        <p className="mt-2 text-xs text-slate-600">
+          <span className="font-medium">{file.name}</span>{" "}
+          <span className="tabular-nums">
+            ({(file.size / 1024 / 1024).toFixed(2)} MB)
+          </span>{" "}
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="ml-1 font-medium text-blue-700 hover:underline"
+          >
+            Remove
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function StudioPage() {
   const [health, setHealth] = useState<HealthState>("checking");
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
+  const [sketch, setSketch] = useState<File | null>(null);
+  const [sketchPreview, setSketchPreview] = useState<string | null>(null);
+  const [sketchError, setSketchError] = useState<string | null>(null);
+  const [sketchDrag, setSketchDrag] = useState(false);
+  const [reference, setReference] = useState<File | null>(null);
+  const [refPreview, setRefPreview] = useState<string | null>(null);
+  const [refError, setRefError] = useState<string | null>(null);
+  const [refDrag, setRefDrag] = useState(false);
   const [preset, setPreset] = useState<Preset>("daylight");
   const [style, setStyle] = useState<Style>("modern");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
   const [job, setJob] = useState<RenderDetail | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const sketchInputRef = useRef<HTMLInputElement>(null);
+  const refInputRef = useRef<HTMLInputElement>(null);
 
   const checkHealth = useCallback(async () => {
     setHealth("checking");
@@ -62,49 +228,63 @@ export default function HomePage() {
     void checkHealth();
   }, [checkHealth]);
 
-  // Revoke the preview object URL when it is replaced or on unmount.
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (sketchPreview) URL.revokeObjectURL(sketchPreview);
+      if (refPreview) URL.revokeObjectURL(refPreview);
     };
-  }, [previewUrl]);
+  }, [sketchPreview, refPreview]);
 
-  const pickFile = useCallback(
+  const pickSketch = useCallback(
     (candidate: File | null) => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-      setFile(null);
-      setFileError(null);
+      if (sketchPreview) URL.revokeObjectURL(sketchPreview);
+      setSketchPreview(null);
+      setSketch(null);
+      setSketchError(null);
       if (!candidate) return;
       const problem = validateFile(candidate);
       if (problem) {
-        setFileError(problem);
+        setSketchError(problem);
         return;
       }
-      setFile(candidate);
-      setPreviewUrl(URL.createObjectURL(candidate));
+      setSketch(candidate);
+      setSketchPreview(URL.createObjectURL(candidate));
     },
-    [previewUrl],
+    [sketchPreview],
   );
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setDragging(false);
-      const dropped = e.dataTransfer.files?.[0] ?? null;
-      pickFile(dropped);
+  const pickReference = useCallback(
+    (candidate: File | null) => {
+      if (refPreview) URL.revokeObjectURL(refPreview);
+      setRefPreview(null);
+      setReference(null);
+      setRefError(null);
+      if (!candidate) return;
+      const problem = validateFile(candidate);
+      if (problem) {
+        setRefError(problem);
+        return;
+      }
+      setReference(candidate);
+      setRefPreview(URL.createObjectURL(candidate));
     },
-    [pickFile],
+    [refPreview],
   );
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (!sketch) return;
     setUploading(true);
     setUploadError(null);
     try {
-      const created = await createRender(file, preset, style);
+      const created = await createRender(sketch, preset, style, reference);
       const detail = await getRender(created.id);
       setJob(detail);
+      // Scroll to the result once it renders.
+      requestAnimationFrame(() => {
+        document
+          .getElementById("studio-result")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (err) {
       if (err instanceof ApiError) {
         setUploadError(err.message);
@@ -116,17 +296,16 @@ export default function HomePage() {
     }
   };
 
-  const canUpload = file !== null && !uploading;
+  const canUpload = sketch !== null && !uploading && !sketchError;
 
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Falcon Render AI
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight">Studio</h1>
           <p className="mt-1 text-slate-600">
-            Geometry-locked architectural renders
+            Geometry-locked architectural renders — your design, never
+            re-imagined.
           </p>
         </div>
         <div aria-live="polite">
@@ -163,137 +342,147 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Step 1 — uploads */}
       <section
-        aria-label="Upload a sketch"
+        aria-label="Step 1: upload images"
         className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
       >
-        <h2 className="text-lg font-semibold">Upload a sketch</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Drop an architectural sketch or photo. We extract its edge map as a
-          geometry lock before rendering, so your design is never re-imagined.
-        </p>
-
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="Choose a sketch file: drag and drop, or press Enter to browse"
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              inputRef.current?.click();
-            }
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          className={`mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-            dragging
-              ? "border-blue-500 bg-blue-50"
-              : "border-slate-300 bg-slate-50 hover:border-slate-400"
-          }`}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept={ACCEPT_ATTR}
-            aria-label="Sketch file"
-            className="sr-only"
-            onChange={(e) => {
-              pickFile(e.target.files?.[0] ?? null);
-              e.target.value = "";
-            }}
+        <h2 className="text-lg font-semibold">
+          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+            1
+          </span>
+          Upload
+        </h2>
+        <div className="mt-4 grid gap-6 md:grid-cols-2">
+          <Dropzone
+            id="sketch-file"
+            title="Your sketch"
+            description="3D model view, floor plan, or massing. Geometry always comes from here."
+            required
+            file={sketch}
+            previewUrl={sketchPreview}
+            error={sketchError}
+            dragging={sketchDrag}
+            onPick={pickSketch}
+            onDragState={setSketchDrag}
+            inputRef={sketchInputRef}
           />
-          {previewUrl && file ? (
-            <img
-              src={previewUrl}
-              alt="Preview of the selected sketch"
-              className="max-h-56 rounded-lg object-contain"
-            />
-          ) : (
-            <>
-              <p className="text-sm font-medium text-slate-700">
-                Drag and drop your sketch here, or click to browse
-              </p>
-              <p className="mt-1 text-xs text-slate-500 tabular-nums">
-                PNG, JPG, or WebP — up to 10 MB
-              </p>
-            </>
-          )}
+          <Dropzone
+            id="reference-file"
+            title="Style reference"
+            description="Materials, colors, mood. Never geometry — your design stays locked."
+            required={false}
+            file={reference}
+            previewUrl={refPreview}
+            error={refError}
+            dragging={refDrag}
+            onPick={pickReference}
+            onDragState={setRefDrag}
+            inputRef={refInputRef}
+          />
         </div>
+      </section>
 
-        {fileError && (
-          <p role="alert" className="mt-2 text-sm font-medium text-red-700">
-            {fileError}
-          </p>
-        )}
-        {file && !fileError && (
-          <p className="mt-2 text-sm text-slate-600">
-            Selected: <span className="font-medium">{file.name}</span>{" "}
-            <span className="tabular-nums">
-              ({(file.size / 1024 / 1024).toFixed(2)} MB)
-            </span>
-          </p>
-        )}
+      {/* Step 2 — look */}
+      <section
+        aria-label="Step 2: choose the look"
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <h2 className="text-lg font-semibold">
+          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+            2
+          </span>
+          Choose the look
+        </h2>
 
-        <div className="mt-6 grid gap-6 sm:grid-cols-2">
-          <fieldset>
-            <legend className="text-sm font-semibold text-slate-900">
-              Lighting preset
-            </legend>
-            <div
-              role="radiogroup"
-              aria-label="Lighting preset"
-              className="mt-2 inline-flex rounded-lg border border-slate-300 bg-slate-50 p-1"
-            >
-              {PRESETS.map((p) => (
-                <label
-                  key={p}
-                  className={`cursor-pointer rounded-md px-4 py-2 text-sm font-medium capitalize transition-colors focus-within:ring-2 focus-within:ring-blue-500 ${
-                    preset === p
-                      ? "bg-white text-blue-700 shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="preset"
-                    value={p}
-                    checked={preset === p}
-                    onChange={() => setPreset(p)}
-                    className="sr-only"
-                  />
-                  {p}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <div>
-            <label
-              htmlFor="style-select"
-              className="text-sm font-semibold text-slate-900"
-            >
-              Design style
-            </label>
-            <select
-              id="style-select"
-              value={style}
-              onChange={(e) => setStyle(e.target.value as Style)}
-              className="mt-2 block w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            >
-              {STYLES.map((s) => (
-                <option key={s} value={s} className="capitalize">
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </option>
-              ))}
-            </select>
+        <fieldset className="mt-4">
+          <legend className="text-sm font-semibold text-slate-900">
+            Lighting
+          </legend>
+          <div
+            role="radiogroup"
+            aria-label="Lighting preset"
+            className="mt-2 grid grid-cols-3 gap-3"
+          >
+            {PRESETS.map((p) => (
+              <label
+                key={p.value}
+                className={`cursor-pointer overflow-hidden rounded-xl border-2 transition-all focus-within:ring-2 focus-within:ring-blue-500 ${
+                  preset === p.value
+                    ? "border-blue-600 shadow-md"
+                    : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="preset"
+                  value={p.value}
+                  checked={preset === p.value}
+                  onChange={() => setPreset(p.value)}
+                  className="sr-only"
+                />
+                <div className="h-16 w-full" style={{ background: p.swatch }} />
+                <div className="px-3 py-2">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {p.label}
+                  </p>
+                  <p className="text-xs text-slate-500">{p.hint}</p>
+                </div>
+              </label>
+            ))}
           </div>
-        </div>
+        </fieldset>
 
+        <fieldset className="mt-6">
+          <legend className="text-sm font-semibold text-slate-900">
+            Design style
+          </legend>
+          <div
+            role="radiogroup"
+            aria-label="Design style"
+            className="mt-2 grid grid-cols-3 gap-3"
+          >
+            {STYLES.map((s) => (
+              <label
+                key={s.value}
+                className={`cursor-pointer overflow-hidden rounded-xl border-2 transition-all focus-within:ring-2 focus-within:ring-blue-500 ${
+                  style === s.value
+                    ? "border-blue-600 shadow-md"
+                    : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="style"
+                  value={s.value}
+                  checked={style === s.value}
+                  onChange={() => setStyle(s.value)}
+                  className="sr-only"
+                />
+                <div className="h-16 w-full" style={{ background: s.swatch }} />
+                <div className="px-3 py-2">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {s.label}
+                  </p>
+                  <p className="text-xs text-slate-500">{s.hint}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </section>
+
+      {/* Step 3 — generate */}
+      <section
+        aria-label="Step 3: generate"
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <h2 className="text-lg font-semibold">
+          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+            3
+          </span>
+          Generate
+        </h2>
         {uploadError && (
           <div
             role="alert"
@@ -302,28 +491,27 @@ export default function HomePage() {
             {uploadError}
           </div>
         )}
-
-        <div className="mt-6">
+        <div className="mt-4">
           <button
             type="button"
             onClick={() => void handleUpload()}
             disabled={!canUpload}
             aria-disabled={!canUpload}
-            title={!file ? "Choose a valid sketch file first" : undefined}
-            className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+            title={!sketch ? "Choose your sketch first" : undefined}
+            className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
           >
-            {uploading ? "Uploading…" : "Upload"}
+            {uploading ? "Uploading…" : "Generate render"}
           </button>
-          {!file && (
+          {!sketch && (
             <p className="mt-2 text-xs text-slate-500">
-              The Upload button activates once a valid file is chosen.
+              Choose your sketch above to activate.
             </p>
           )}
         </div>
       </section>
 
       {job && (
-        <div aria-live="polite">
+        <div id="studio-result" aria-live="polite" className="scroll-mt-4">
           <RenderJob key={job.id} initial={job} />
         </div>
       )}

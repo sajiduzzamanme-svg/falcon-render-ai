@@ -51,6 +51,7 @@ export interface RenderDetail extends RenderItem {
   artifacts: {
     sketch: string;
     edge: string;
+    reference: string | null;
     render: string | null;
   };
 }
@@ -122,11 +123,13 @@ export function createRender(
   file: File,
   preset: Preset,
   style: Style,
+  reference?: File | null,
 ): Promise<CreateRenderResponse> {
   const form = new FormData();
   form.append("file", file);
   form.append("preset", preset);
   form.append("style", style);
+  if (reference) form.append("reference", reference);
   return request<CreateRenderResponse>("/api/v1/renders", {
     method: "POST",
     body: form,

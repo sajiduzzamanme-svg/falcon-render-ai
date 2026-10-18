@@ -204,7 +204,7 @@ def test_generate_with_openrouter_key_succeeds(
 
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
     monkeypatch.setattr(
-        OpenRouterRenderAdapter, "generate", lambda self, *a: b"fake-png-bytes"
+        OpenRouterRenderAdapter, "generate", lambda self, *a, **k: b"fake-png-bytes"
     )
     job_id = _upload(client, _png_bytes()).json()["id"]
     resp = client.post(f"/api/v1/renders/{job_id}/generate")
@@ -234,7 +234,7 @@ def test_fidelity_gate_retries_until_max_attempts(
     monkeypatch.setattr(settings, "FIDELITY_MIN_SCORE", 0.99)
     monkeypatch.setattr(settings, "FIDELITY_MAX_ATTEMPTS", 3)
     monkeypatch.setattr(
-        OpenRouterRenderAdapter, "generate", lambda self, *a: b"fake-png-bytes"
+        OpenRouterRenderAdapter, "generate", lambda self, *a, **k: b"fake-png-bytes"
     )
     job_id = _upload(client, _png_bytes()).json()["id"]
     assert client.post(f"/api/v1/renders/{job_id}/generate").status_code == 202
@@ -247,3 +247,47 @@ def test_fidelity_gate_retries_until_max_attempts(
     assert body["status"] == "succeeded"
     assert body["fidelity_attempts"] == 3
     assert body["fidelity_score"] == pytest.approx(0.0)
+
+
+def test_upload_with_reference_stores_artifact(
+    client: TestClient,
+) -> None:
+    resp = client.post(
+        "/api/v1/renders",
+        files={
+            "file": ("sketch.png", _png_bytes(), "application/octet-stream"),
+            "reference": ("ref.png", _png_bytes(), "application/octet-stream"),
+        },
+        data={"preset": "dusk", "style": "warm"},
+    )
+    assert resp.status_code == 201
+    job_id = resp.json()["id"]
+    detail = client.get(f"/api/v1/renders/{job_id}").json()
+    assert detail["artifacts"]["reference"] is not None
+    assert detail["artifacts"]["reference"].endswith(f"/{job_id}/reference")
+    r = client.get(f"/api/v1/files/{job_id}/reference")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+
+
+def test_upload_without_reference_has_null_artifact(
+    client: TestClient,
+) -> None:
+    job_id = _upload(client, _png_bytes()).json()["id"]
+    detail = client.get(f"/api/v1/renders/{job_id}").json()
+    assert detail["artifacts"]["reference"] is None
+    r = client.get(f"/api/v1/files/{job_id}/reference")
+    assert r.status_code == 404
+
+
+def test_upload_invalid_reference_rejected(client: TestClient) -> None:
+    resp = client.post(
+        "/api/v1/renders",
+        files={
+            "file": ("sketch.png", _png_bytes(), "application/octet-stream"),
+            "reference": ("evil.txt", b"not an image", "text/plain"),
+        },
+        data={"preset": "daylight", "style": "modern"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_UPLOAD"

@@ -31,16 +31,23 @@ _STYLE_DIRECTION = {
 }
 
 
-def fidelity_prompt(preset: str, style: str) -> str:
+def fidelity_prompt(preset: str, style: str, has_reference: bool = False) -> str:
     lighting = _PRESET_LIGHTING.get(preset, preset)
     look = _STYLE_DIRECTION.get(style, style)
-    return (
+    prompt = (
         "Render this architectural sketch into a photorealistic image. "
         "Preserve the exact geometry, massing, proportions, window and door "
         "placement, and viewpoint of the provided sketch and edge map — "
         "do not redesign, reinterpret, or alter any structural element. "
         f"Lighting: {lighting}. Style: {look}."
     )
+    if has_reference:
+        prompt += (
+            " A third image is provided as a STYLE reference only: take "
+            "materials, colors, and mood from it, but never its geometry, "
+            "layout, or viewpoint."
+        )
+    return prompt
 
 
 class GeminiRenderAdapter(RenderAdapter):
@@ -52,7 +59,12 @@ class GeminiRenderAdapter(RenderAdapter):
         return bool(self._api_key and self._api_key.strip())
 
     def generate(
-        self, sketch_path: Path, edge_path: Path, preset: str, style: str
+        self,
+        sketch_path: Path,
+        edge_path: Path,
+        preset: str,
+        style: str,
+        reference_path: Path | None = None,
     ) -> bytes:
         if not self.configured:
             raise ProviderNotConfigured(
@@ -62,26 +74,37 @@ class GeminiRenderAdapter(RenderAdapter):
         def _b64(path: Path) -> str:
             return base64.b64encode(path.read_bytes()).decode("ascii")
 
-        body = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": fidelity_prompt(preset, style)},
-                        {
-                            "inline_data": {
-                                "mime_type": "image/png",
-                                "data": _b64(sketch_path),
-                            }
-                        },
-                        {
-                            "inline_data": {
-                                "mime_type": "image/png",
-                                "data": _b64(edge_path),
-                            }
-                        },
-                    ]
+        parts: list[dict] = [
+            {
+                "text": fidelity_prompt(
+                    preset, style, has_reference=reference_path is not None
+                )
+            },
+            {
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": _b64(sketch_path),
                 }
-            ],
+            },
+            {
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": _b64(edge_path),
+                }
+            },
+        ]
+        if reference_path is not None:
+            parts.append(
+                {
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": _b64(reference_path),
+                    }
+                }
+            )
+
+        body = {
+            "contents": [{"parts": parts}],
             "generationConfig": {"responseModalities": ["IMAGE"]},
         }
 

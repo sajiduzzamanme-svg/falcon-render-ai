@@ -3,6 +3,7 @@
 import io
 import threading
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, File, Form, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
@@ -27,7 +28,7 @@ router = APIRouter()
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_FORMATS = {"PNG", "JPEG", "WEBP"}
-FILE_KINDS = {"sketch", "edge", "render"}
+FILE_KINDS = {"sketch", "edge", "render", "reference"}
 
 
 def error_response(http_status: int, code: str, message: str) -> JSONResponse:
@@ -63,6 +64,9 @@ def _job_to_detail(record: dict) -> dict:
     detail["artifacts"] = {
         "sketch": f"/api/v1/files/{job_id}/sketch",
         "edge": f"/api/v1/files/{job_id}/edge",
+        "reference": f"/api/v1/files/{job_id}/reference"
+        if jobs.artifact_path(job_id, "reference").exists()
+        else None,
         "render": f"/api/v1/files/{job_id}/render"
         if jobs.artifact_path(job_id, "render").exists()
         else None,
@@ -108,6 +112,7 @@ async def create_render(
     file: UploadFile = File(...),  # noqa: B008 — standard FastAPI dependency idiom
     preset: str = Form(...),
     style: str = Form(...),
+    reference: Annotated[UploadFile | None, File()] = None,
 ) -> JSONResponse:
     if preset not in PRESETS:
         return error_response(
@@ -134,6 +139,12 @@ async def create_render(
         sketch_path.write_bytes(content)
         edge_path = jobs.artifact_path(job_id, "edge")
         extract_edges(sketch_path, edge_path)
+        if reference is not None:
+            ref_content = await reference.read()
+            validated_ref = _validate_image(ref_content, reference.filename)
+            if isinstance(validated_ref, JSONResponse):
+                return validated_ref
+            jobs.artifact_path(job_id, "reference").write_bytes(ref_content)
     except GeometryError as exc:
         return error_response(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "INVALID_UPLOAD", str(exc)
@@ -193,6 +204,8 @@ def _run_generation(job_id: str) -> None:
         return
     sketch_path = jobs.artifact_path(job_id, "sketch")
     edge_path = jobs.artifact_path(job_id, "edge")
+    reference_path = jobs.artifact_path(job_id, "reference")
+    reference_arg = reference_path if reference_path.exists() else None
     best_score = 0.0
     best_bytes: bytes | None = None
     attempts = 0
@@ -205,6 +218,7 @@ def _run_generation(job_id: str) -> None:
                 edge_path,
                 record["preset"],
                 record["style"],
+                reference_path=reference_arg,
             )
             try:
                 score = fidelity_score(edge_path, image_bytes)

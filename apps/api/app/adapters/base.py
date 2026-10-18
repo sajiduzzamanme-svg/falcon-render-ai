@@ -15,6 +15,16 @@ class RenderFailed(Exception):
 class RenderAdapter(ABC):
     @abstractmethod
     def generate(
-        self, sketch_path: Path, edge_path: Path, preset: str, style: str
+        self,
+        sketch_path: Path,
+        edge_path: Path,
+        preset: str,
+        style: str,
+        reference_path: Path | None = None,
     ) -> bytes:
-        """Render sketch+edge map into image bytes (PNG)."""
+        """Render sketch+edge map into image bytes (PNG).
+
+        reference_path, when given, is a *style* reference: materials,
+        colors, mood only — never geometry. Geometry always comes from
+        the sketch.
+        """
