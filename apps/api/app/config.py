@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # legacy service_role JWT does not work via the apikey header alone).
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_KEY: str = ""
+    # Comma-separated list of allowed CORS origins. Defaults cover local dev;
+    # on Railway/Railway-like hosts add the production frontend URL, e.g.
+    # CORS_ORIGINS="https://falcon-render-ai.vercel.app".
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     # Public JWKS for verifying Supabase-issued user access JWTs (auth.py).
     # No secret: verification uses the project's public signing keys.
     SUPABASE_JWKS_URL: str = (
