@@ -53,10 +53,13 @@ export default function PricingPage() {
       <div className="mx-auto flex max-w-2xl items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-4">
         <div>
           <p className="text-sm font-semibold text-emerald-900">
-            Try 1 render free
+            Start free — no signup needed
           </p>
           <p className="text-xs text-emerald-700">
-            No signup needed to preview. Signup only when you download.
+            Render 1 sketch and see a watermarked preview. Sign up to
+            download — new accounts get{" "}
+            <strong className="font-semibold">30 free credits</strong> (≈3
+            full renders with download).
           </p>
         </div>
         <Link
@@ -139,6 +142,17 @@ export default function PricingPage() {
       >
         <h2 className="text-lg font-semibold">How credits work</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
+          <li>
+            New accounts start with{" "}
+            <strong className="font-semibold text-slate-900">
+              30 free credits
+            </strong>{" "}
+            (≈3 renders) — no card required.
+          </li>
+          <li>
+            Without an account you can render once and see a watermarked
+            preview; downloads always require a free account.
+          </li>
           <li>
             Every completed render costs{" "}
             <strong className="font-semibold text-slate-900">10 credits</strong>,

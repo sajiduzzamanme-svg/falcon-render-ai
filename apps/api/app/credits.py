@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 CREDITS_PER_RENDER = 10
 
+# Free credits granted to every new signup (ADR 0004).
+# 30 credits = 3 full renders with download (30 / 10).
+FREE_SIGNUP_CREDITS = 30
+
 LEDGER_TABLE = "credit_ledger"
 PROFILES_TABLE = "profiles"
 TRIALS_TABLE = "anonymous_trials"

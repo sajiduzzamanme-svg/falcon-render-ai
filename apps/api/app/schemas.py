@@ -63,6 +63,16 @@ class RenderJobResponse(BaseModel):
     artifacts: Artifacts
     fidelity_score: float | None = None
     fidelity_attempts: int = 0
+    # UUID of the creating account, or None for anonymous jobs.
+    # Lets the frontend decide download-button state (ADR 0004).
+    owner_id: str | None = None
+
+
+class MeResponse(BaseModel):
+    id: str
+    email: str | None = None
+    # Credit balance; None when Supabase is not configured (local dev).
+    credits: int | None = None
 
 
 class RenderJobSummary(BaseModel):

@@ -5,7 +5,7 @@ from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .routes import health, renders
+from .routes import health, renders, users
 
 app = FastAPI(title="Falcon Render AI")
 
@@ -18,6 +18,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(renders.router, prefix="/api/v1", tags=["renders"])
+app.include_router(users.router, prefix="/api/v1", tags=["users"])
 
 
 def _error_body(code: str, message: str) -> dict:

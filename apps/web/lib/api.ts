@@ -48,6 +48,8 @@ export interface RenderItem {
 export interface RenderDetail extends RenderItem {
   fidelity_attempts: number;
   error: ApiErrorDetail | null;
+  /** UUID of the creating account, or null for anonymous jobs. */
+  owner_id: string | null;
   artifacts: {
     sketch: string;
     edge: string;
@@ -164,6 +166,20 @@ export function generateRender(
     `/api/v1/renders/${encodeURIComponent(id)}/generate`,
     { method: "POST", headers: authHeaders(accessToken) },
   );
+}
+
+export interface MeResponse {
+  id: string;
+  email: string | null;
+  /** Credit balance; null in local-dev mode (Supabase not configured). */
+  credits: number | null;
+}
+
+/** Signed-in only: current user's id, email, and credit balance. */
+export function getMe(accessToken: string): Promise<MeResponse> {
+  return request<MeResponse>("/api/v1/users/me", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 }
 
 export interface DownloadUrlResponse {

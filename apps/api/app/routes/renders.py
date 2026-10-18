@@ -72,6 +72,9 @@ def _job_to_detail(record: dict) -> dict:
     detail = _job_to_summary(record)
     detail["fidelity_attempts"] = record.get("fidelity_attempts", 0)
     detail["error"] = record.get("error")
+    # owner_id lets the frontend decide download-button state before
+    # attempting the gated endpoints (ADR 0004).
+    detail["owner_id"] = record.get("user_id")
     detail["artifacts"] = {
         "sketch": f"/api/v1/files/{job_id}/sketch",
         "edge": f"/api/v1/files/{job_id}/edge",
@@ -89,14 +92,28 @@ def _job_to_detail(record: dict) -> dict:
 
 
 def _can_access_job(record: dict, user: dict) -> bool:
-    """Ownership rule for full-resolution artifacts.
+    """Ownership rule for full-resolution artifacts (ADR 0004).
 
-    Jobs created before signup (user_id None) stay downloadable by any
-    signed-in user; jobs created signed-in are restricted to their owner.
-    Job ids are unguessable UUIDs, so this is a reasonable beta gate.
+    Only the job's owner may download. Jobs created anonymously
+    (``user_id`` None) are NEVER downloadable by anyone — anonymous users
+    get the watermarked preview only ("login chara download na").
+    Job ids are unguessable UUIDs, so this is a sound gate.
     """
     owner = record.get("user_id")
-    return owner is None or owner == user["id"]
+    return owner is not None and owner == user["id"]
+
+
+def _forbidden_download(record: dict) -> JSONResponse:
+    """403 with an explanation matching why this job can't be downloaded."""
+    if record.get("user_id") is None:
+        message = (
+            "This render was created without an account and cannot be "
+            "downloaded. Create your own render to download it in full "
+            "resolution."
+        )
+    else:
+        message = "Only the account that created this render can download it."
+    return error_response(status.HTTP_403_FORBIDDEN, "FORBIDDEN", message)
 
 
 def _make_preview(src: Path, dst: Path) -> None:
@@ -401,8 +418,9 @@ def get_file(
             "ARTIFACT_NOT_FOUND",
             f"No artifact '{kind}' for job '{job_id}'.",
         )
-    # Signup gate: the full-resolution render needs a signed-in session.
-    # Anonymous visitors get the watermarked preview via /files/{id}/preview.
+    # Signup gate: the full-resolution render needs a signed-in session,
+    # and only the job's owner may access it (ADR 0004). Anonymous visitors
+    # get the watermarked preview via /files/{id}/preview.
     if kind == "render":
         if user is None:
             return error_response(
@@ -412,11 +430,7 @@ def get_file(
             )
         record = jobs.get(job_id)
         if record is not None and not _can_access_job(record, user):
-            return error_response(
-                status.HTTP_403_FORBIDDEN,
-                "FORBIDDEN",
-                "This render belongs to another account.",
-            )
+            return _forbidden_download(record)
     path = jobs.artifact_path(job_id, kind)
     if not path.exists():
         return error_response(
@@ -435,19 +449,20 @@ def download_render(
 ) -> JSONResponse:
     """Mint a download URL for the full-resolution render.
 
-    Requires a valid Supabase session (401 otherwise). With Supabase
-    configured, returns a time-limited signed Storage URL; in local-dev
-    mode, the direct file URL (the caller still sends its token).
+    Requires a valid Supabase session (401 otherwise) AND ownership:
+    only the account that created the job may download it (ADR 0004).
+    Anonymous-created jobs are never downloadable — the watermarked
+    preview is the only artifact for anonymous users.
+
+    With Supabase configured, returns a time-limited signed Storage URL;
+    in local-dev mode, the direct file URL (the caller still sends its
+    token).
     """
     record = jobs.get(job_id)
     if record is None:
         return job_not_found(job_id)
     if not _can_access_job(record, user):
-        return error_response(
-            status.HTTP_403_FORBIDDEN,
-            "FORBIDDEN",
-            "This render belongs to another account.",
-        )
+        return _forbidden_download(record)
     if not jobs.artifact_path(job_id, "render").exists():
         return error_response(
             status.HTTP_404_NOT_FOUND,

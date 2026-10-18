@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -14,7 +15,13 @@ import { useAuth } from "@/lib/auth";
 import CompareSlider from "./compare-slider";
 import StatusBadge from "./status-badge";
 
-type Notice = { kind: "warn" | "error" | "info"; text: string } | null;
+type Notice =
+  | {
+      kind: "warn" | "error" | "info";
+      text: string;
+      link?: { href: string; label: string };
+    }
+  | null;
 
 const NOTICE_STYLES: Record<NonNullable<Notice>["kind"], string> = {
   warn: "border-amber-300 bg-amber-50 text-amber-900",
@@ -39,11 +46,22 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
   const { user, session, configured } = useAuth();
   const router = useRouter();
 
-  // Authenticated users see the full-resolution render; everyone else sees
-  // the watermarked preview (signup gate).
-  const afterSrc = user
+  // Full-resolution is owner-only (ADR 0004): signed-in owners see their
+  // render; everyone else (anonymous or non-owner) sees the watermarked
+  // preview. Anonymous-created jobs are never downloadable by anyone.
+  const isOwner = Boolean(user && detail.owner_id && detail.owner_id === user.id);
+  const afterSrc = isOwner
     ? detail.artifacts.render
     : (detail.artifacts.preview ?? detail.artifacts.render);
+
+  // Why the download button is unavailable for this viewer (null = OK).
+  const downloadBlocked: string | null = !user
+    ? null // anonymous → the button routes to signup instead
+    : detail.owner_id === null
+      ? "This render was created without an account and can't be downloaded. Create your own render to download it in full resolution."
+      : detail.owner_id !== user.id
+        ? "This render belongs to another account — only its creator can download it."
+        : null;
 
   const active =
     detail.status === "queued" || detail.status === "processing";
@@ -86,6 +104,12 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             kind: "warn",
             text: "Render provider not configured — set OPENROUTER_API_KEY or GEMINI_API_KEY on the API server and retry.",
           });
+        } else if (err.status === 402) {
+          setNotice({
+            kind: "warn",
+            text: "You're out of credits — buy a pack to keep rendering.",
+            link: { href: "/pricing", label: "See pricing" },
+          });
         } else if (err.status === 409) {
           setNotice({
             kind: "info",
@@ -115,18 +139,26 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
       router.push(`/login?next=/renders/${encodeURIComponent(detail.id)}`);
       return;
     }
+    if (downloadBlocked) {
+      setNotice({ kind: "info", text: downloadBlocked });
+      return;
+    }
     setDownloading(true);
     setNotice(null);
     try {
       await downloadRender(detail.id, session.access_token);
     } catch (err) {
-      setNotice({
-        kind: "error",
-        text:
-          err instanceof ApiError
-            ? `Download failed: ${err.message}`
-            : "Download failed. Please try again.",
-      });
+      if (err instanceof ApiError && err.status === 403) {
+        setNotice({ kind: "info", text: downloadBlocked ?? err.message });
+      } else {
+        setNotice({
+          kind: "error",
+          text:
+            err instanceof ApiError
+              ? `Download failed: ${err.message}`
+              : "Download failed. Please try again.",
+        });
+      }
     } finally {
       setDownloading(false);
     }
@@ -139,7 +171,15 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
           role="alert"
           className={`rounded-lg border px-4 py-3 text-sm font-medium ${NOTICE_STYLES[notice.kind]}`}
         >
-          {notice.text}
+          {notice.text}{" "}
+          {notice.link && (
+            <Link
+              href={notice.link.href}
+              className="font-semibold underline underline-offset-2"
+            >
+              {notice.link.label}
+            </Link>
+          )}
         </div>
       )}
 
@@ -184,9 +224,9 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             <img
               src={fileUrl(afterSrc)}
               alt={
-                user
+                isOwner
                   ? "Geometry-locked architectural render"
-                  : "Watermarked preview — sign in to download full resolution"
+                  : "Watermarked preview — sign in as the creator to download full resolution"
               }
               className="aspect-[4/3] w-full object-contain bg-slate-50"
             />
@@ -221,7 +261,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             </div>
           )}
           <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {user ? "Render" : "Render — watermarked preview"}
+            {isOwner ? "Render" : "Render — watermarked preview"}
           </figcaption>
         </figure>
       </div>
@@ -277,19 +317,24 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
           <button
             type="button"
             onClick={() => void handleDownload()}
-            disabled={downloading}
+            disabled={downloading || (Boolean(user) && downloadBlocked !== null)}
+            title={user && downloadBlocked ? downloadBlocked : undefined}
             className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {downloading
               ? "Preparing download…"
-              : user
-                ? "Download render"
-                : "Sign up to download full resolution"}
+              : !user
+                ? "Sign up to download full resolution"
+                : downloadBlocked
+                  ? "Download unavailable"
+                  : "Download render"}
           </button>
           <p className="text-xs text-slate-500">
-            {user || !configured
-              ? "Full-resolution PNG, watermark-free."
-              : "Anonymous visitors see a watermarked preview — free during beta."}
+            {user && downloadBlocked
+              ? downloadBlocked
+              : isOwner || !configured
+                ? "Full-resolution PNG, watermark-free."
+                : "Anonymous visitors see a watermarked preview — free during beta."}
           </p>
         </div>
       )}

@@ -215,3 +215,66 @@ Test artifacts cleaned; storage/ empty; no secrets committed (secret scan: clean
   this env — the publishable `NEXT_PUBLIC_SUPABASE_ANON_KEY` is needed to
   run the real auth flow; the backend verifier and gating are unit-tested
   with injected keypairs, not against a real issued token).
+
+## 2026-10-18 — Freemium model v2 (ADR 0004)
+
+Mavi's decision: anonymous users can render but NEVER download (preview
+only); signed-up users get 30 free credits on signup (≈3 renders with
+download, 30/10 confirmed); beyond credits, generate returns 402 and the
+UI points at pricing.
+
+- Backend `app/credits.py`: new `FREE_SIGNUP_CREDITS = 30`
+  (`CREDITS_PER_RENDER` stays 10).
+- New migration `supabase/migrations/0002_signup_bonus.sql`: replaces
+  `handle_new_user()` so signup inserts the profile with `credits=30`
+  plus a `+30` ledger row (`reason='grant'`). Idempotent: the bonus fires
+  only when the profile row is actually inserted (`IF FOUND`), so users
+  created before this migration keep their existing balance (no retroactive
+  grant — per Mavi's "new user" wording). The existing
+  `on_auth_user_created` trigger needs no change. **MANUAL STEP: Mavi must
+  run this file in the Supabase dashboard SQL Editor** (PostgREST cannot
+  run DDL). After applying, verify: sign up a test user → profiles.credits
+  = 30 and one credit_ledger row with delta=30, reason='grant'.
+- Download rule tightened (resolves the creator-only question from the
+  Auth commit): `_can_access_job` is now owner-only —
+  `owner is not None and owner == user["id"]`. Anonymous-created jobs are
+  NEVER downloadable by anyone (403, "created without an account…").
+  Applies to both `/files/{id}/render` and `/renders/{id}/download`.
+  `/files/{id}/preview` stays public.
+- Job detail now exposes `owner_id` (schema `RenderJobResponse.owner_id`)
+  so the frontend sets download-button state upfront.
+- New `GET /api/v1/users/me` (auth required): `{id, email, credits}`;
+  `credits` is null in local-dev mode (no Supabase). Feeds the nav pill.
+- Frontend:
+  - Pricing page: free-tier banner rewritten (anonymous = 1 render,
+    watermarked preview, no download; new accounts = 30 free credits ≈3
+    renders); "How credits work" gains the signup-bonus bullets. Paid
+    tiers unchanged.
+  - Nav (`auth-nav.tsx`): amber "N credits" pill for signed-in users
+    (hidden when credits is null / local dev).
+  - `render-job.tsx`: full-res image/compare only for the owner
+    (`isOwner`); download button states — anonymous → "Sign up to
+    download full resolution" (unchanged), logged-in non-owner or viewer
+    of an anonymous job → disabled "Download unavailable" + explanation;
+    402 on generate → warning notice with "See pricing" link. 403 on
+    download falls back to an info notice.
+  - `lib/api.ts`: `RenderDetail.owner_id`, `getMe()`.
+- Docs: new ADR `docs/decisions/0004-freemium-model.md` (supersedes the
+  free-tier parts of ADR 0003).
+- Tests: 6 new in `tests/test_freemium.py` (bonus constants, migration
+  0002 parses via pglast 8.6 — validates outer SQL; plpgsql body covered
+  by text assertions — plus `/users/me` 401/200); 5 net-new gate tests in
+  `test_auth.py` (owner 200, anonymous-job 403, non-owner 403 on both
+  endpoints, `owner_id` in detail); 2 pre-existing `test_api.py` tests
+  updated for the tightened rule (ownership is checked before existence,
+  so signed-in non-owner → 403, not 404). **Results: 70/70 pass**
+  (was 59), ruff check + format clean, `tsc --noEmit` clean,
+  `next build` succeeds (8/8 pages).
+- Live smoke test (local server): anonymous upload → 201,
+  `owner_id: null` in detail, `/files/{id}/render` → 401,
+  `/renders/{id}/download` → 401, `/users/me` → 401. All as expected.
+- NOT VERIFIED: migration 0002 applied + signup-bonus E2E (needs Mavi to
+  run the SQL + the publishable key for a real signup flow); live
+  signup→download still pending for the same reason.
+- No secrets in code/logs/tests/commits (frontend: publishable key via
+  env only).

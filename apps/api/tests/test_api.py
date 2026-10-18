@@ -148,14 +148,16 @@ def test_render_before_generation_404(client: TestClient) -> None:
     resp = client.get(f"/api/v1/files/{job_id}/render")
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "UNAUTHORIZED"
-    # Signed-in callers still get 404 when no render exists yet.
+    # ADR 0004: ownership is checked before existence — an anonymous job is
+    # never downloadable, so a signed-in caller gets 403 even when the
+    # render artifact does not exist yet.
     from app.auth import get_optional_user
 
     client.app.dependency_overrides[get_optional_user] = lambda: {"id": "u1"}
     try:
         resp = client.get(f"/api/v1/files/{job_id}/render")
-        assert resp.status_code == 404
-        assert resp.json()["error"]["code"] == "ARTIFACT_NOT_FOUND"
+        assert resp.status_code == 403
+        assert resp.json()["error"]["code"] == "FORBIDDEN"
     finally:
         client.app.dependency_overrides.clear()
 
@@ -239,9 +241,17 @@ def test_generate_with_openrouter_key_succeeds(
     assert resp.status_code == 401
     from app.auth import get_optional_user
 
+    # ADR 0004: only the owner may download. This job was created
+    # anonymously, so a signed-in user gets 403 — recreate the flow as the
+    # owner for the 200 case.
     client.app.dependency_overrides[get_optional_user] = lambda: {"id": "u1"}
     try:
         resp = client.get(f"/api/v1/files/{job_id}/render")
+        assert resp.status_code == 403
+        # Owner flow: upload as u1, then the full-res file is accessible.
+        owner_job = _upload(client, _png_bytes()).json()["id"]
+        jobs.artifact_path(owner_job, "render").write_bytes(_png_bytes(400, 300))
+        resp = client.get(f"/api/v1/files/{owner_job}/render")
         assert resp.status_code == 200
         # A watermarked preview was generated alongside the render.
         resp = client.get(f"/api/v1/files/{job_id}/preview")

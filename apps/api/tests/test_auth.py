@@ -181,12 +181,36 @@ def test_render_file_anonymous_401(client: TestClient, _clean_overrides) -> None
     assert resp.json()["error"]["code"] == "UNAUTHORIZED"
 
 
-def test_render_file_authed_200(client: TestClient, _clean_overrides) -> None:
-    job_id = _job_with_render(client)
+def test_render_file_owner_200(client: TestClient, _clean_overrides) -> None:
+    # Job created BY the signed-in user: full-res access granted.
     _authed(client)
+    job_id = _job_with_render(client)
     resp = client.get(f"/api/v1/files/{job_id}/render")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("image/")
+
+
+def test_render_file_anonymous_job_authed_403(
+    client: TestClient, _clean_overrides
+) -> None:
+    # ADR 0004: anonymous-created jobs are NEVER downloadable, by anyone.
+    job_id = _job_with_render(client)
+    _authed(client)
+    resp = client.get(f"/api/v1/files/{job_id}/render")
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "FORBIDDEN"
+    assert "without an account" in resp.json()["error"]["message"]
+
+
+def test_render_file_other_users_job_forbidden(
+    client: TestClient, _clean_overrides
+) -> None:
+    job_id = _job_with_render(client)
+    jobs.update(job_id, user_id="someone-else")
+    _authed(client, user_id="user-abc")
+    resp = client.get(f"/api/v1/files/{job_id}/render")
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "FORBIDDEN"
 
 
 def test_preview_stays_public(client: TestClient) -> None:
@@ -203,15 +227,27 @@ def test_download_endpoint_anonymous_401(client: TestClient, _clean_overrides) -
     assert resp.json()["error"]["code"] == "UNAUTHORIZED"
 
 
-def test_download_endpoint_authed_returns_url(
+def test_download_endpoint_owner_returns_url(
     client: TestClient, _clean_overrides
 ) -> None:
-    job_id = _job_with_render(client)
     _authed(client)
+    job_id = _job_with_render(client)
     resp = client.get(f"/api/v1/renders/{job_id}/download")
     assert resp.status_code == 200
     body = resp.json()
     assert body["download_url"].endswith(f"/api/v1/files/{job_id}/render")
+
+
+def test_download_endpoint_anonymous_job_authed_403(
+    client: TestClient, _clean_overrides
+) -> None:
+    # ADR 0004: "login chara download na" — anonymous jobs are never
+    # downloadable, even by a signed-in user.
+    job_id = _job_with_render(client)
+    _authed(client)
+    resp = client.get(f"/api/v1/renders/{job_id}/download")
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "FORBIDDEN"
 
 
 def test_download_other_users_job_forbidden(
@@ -236,6 +272,29 @@ def test_job_creation_attaches_user_id(client: TestClient, _clean_overrides) -> 
     record = jobs.get(resp.json()["id"])
     assert record is not None
     assert record.get("user_id") == "user-abc"
+
+
+def test_job_detail_exposes_owner_id(client: TestClient, _clean_overrides) -> None:
+    _authed(client, user_id="user-abc")
+    resp = client.post(
+        "/api/v1/renders",
+        files={"file": ("s.png", _png_bytes(), "application/octet-stream")},
+        data={"preset": "daylight", "style": "modern"},
+    )
+    assert resp.status_code == 201, resp.text
+    detail = client.get(f"/api/v1/renders/{resp.json()['id']}").json()
+    assert detail["owner_id"] == "user-abc"
+
+
+def test_job_detail_anonymous_owner_null(client: TestClient) -> None:
+    resp = client.post(
+        "/api/v1/renders",
+        files={"file": ("s.png", _png_bytes(), "application/octet-stream")},
+        data={"preset": "daylight", "style": "modern"},
+    )
+    assert resp.status_code == 201, resp.text
+    detail = client.get(f"/api/v1/renders/{resp.json()['id']}").json()
+    assert detail["owner_id"] is None
 
 
 def test_preview_generation_marks_watermark() -> None:
