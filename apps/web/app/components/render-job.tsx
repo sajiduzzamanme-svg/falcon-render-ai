@@ -1,13 +1,16 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ApiError,
+  downloadRender,
   fileUrl,
   generateRender,
   getRender,
   type RenderDetail,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import CompareSlider from "./compare-slider";
 import StatusBadge from "./status-badge";
 
@@ -32,6 +35,15 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
   const [detail, setDetail] = useState<RenderDetail>(initial);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+  const [downloading, setDownloading] = useState(false);
+  const { user, session, configured } = useAuth();
+  const router = useRouter();
+
+  // Authenticated users see the full-resolution render; everyone else sees
+  // the watermarked preview (signup gate).
+  const afterSrc = user
+    ? detail.artifacts.render
+    : (detail.artifacts.preview ?? detail.artifacts.render);
 
   const active =
     detail.status === "queued" || detail.status === "processing";
@@ -41,7 +53,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
     if (!active) return;
     const timer = setInterval(async () => {
       try {
-        const next = await getRender(detail.id);
+        const next = await getRender(detail.id, session?.access_token);
         setDetail(next);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -65,8 +77,8 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
     setBusy(true);
     setNotice(null);
     try {
-      await generateRender(detail.id);
-      setDetail(await getRender(detail.id));
+      await generateRender(detail.id, session?.access_token);
+      setDetail(await getRender(detail.id, session?.access_token));
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 503) {
@@ -80,7 +92,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             text: "A render is already running for this sketch — resuming.",
           });
           try {
-            setDetail(await getRender(detail.id));
+            setDetail(await getRender(detail.id, session?.access_token));
           } catch {
             // keep the current detail; the poll (or retry) will catch up
           }
@@ -97,6 +109,28 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
 
   const showGenerate =
     (detail.status === "queued" || detail.status === "failed") && !busy;
+
+  const handleDownload = async () => {
+    if (!user || !session) {
+      router.push(`/login?next=/renders/${encodeURIComponent(detail.id)}`);
+      return;
+    }
+    setDownloading(true);
+    setNotice(null);
+    try {
+      await downloadRender(detail.id, session.access_token);
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        text:
+          err instanceof ApiError
+            ? `Download failed: ${err.message}`
+            : "Download failed. Please try again.",
+      });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <section aria-label="Render job" className="space-y-4">
@@ -146,10 +180,14 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
         )}
 
         <figure className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {detail.artifacts.render ? (
+          {afterSrc ? (
             <img
-              src={fileUrl(detail.artifacts.render)}
-              alt="Geometry-locked architectural render"
+              src={fileUrl(afterSrc)}
+              alt={
+                user
+                  ? "Geometry-locked architectural render"
+                  : "Watermarked preview — sign in to download full resolution"
+              }
               className="aspect-[4/3] w-full object-contain bg-slate-50"
             />
           ) : (
@@ -183,19 +221,19 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             </div>
           )}
           <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Render
+            {user ? "Render" : "Render — watermarked preview"}
           </figcaption>
         </figure>
       </div>
 
-      {detail.artifacts.render && (
+      {afterSrc && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-slate-900">
             Compare — drag the handle
           </h3>
           <CompareSlider
             beforeSrc={fileUrl(detail.artifacts.sketch)}
-            afterSrc={fileUrl(detail.artifacts.render)}
+            afterSrc={fileUrl(afterSrc)}
             beforeLabel="Sketch"
             afterLabel="Render"
           />
@@ -236,16 +274,22 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
 
       {detail.artifacts.render && (
         <div className="flex flex-wrap items-center gap-3">
-          <a
-            href={fileUrl(detail.artifacts.render)}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={downloading}
+            className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Download render
-          </a>
+            {downloading
+              ? "Preparing download…"
+              : user
+                ? "Download render"
+                : "Sign up to download full resolution"}
+          </button>
           <p className="text-xs text-slate-500">
-            Free during beta — sign-up-gated downloads ship with Supabase Auth.
+            {user || !configured
+              ? "Full-resolution PNG, watermark-free."
+              : "Anonymous visitors see a watermarked preview — free during beta."}
           </p>
         </div>
       )}

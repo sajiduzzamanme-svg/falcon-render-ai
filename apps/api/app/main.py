@@ -1,7 +1,7 @@
 """Falcon Render AI — FastAPI application."""
 
 from fastapi import FastAPI, Request, status
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -60,3 +60,15 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=_error_body("INTERNAL_ERROR", "An unexpected error occurred."),
     )
+
+
+@app.exception_handler(HTTPException)
+async def http_error_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    # Render HTTPException (raised by auth dependencies) in the app's
+    # {"error": {"code", "message"}} convention instead of {"detail": ...}.
+    detail = exc.detail
+    if isinstance(detail, dict) and "code" in detail:
+        body = {"error": detail}
+    else:
+        body = _error_body("HTTP_ERROR", str(detail) if detail else "Request failed.")
+    return JSONResponse(status_code=exc.status_code, content=body)

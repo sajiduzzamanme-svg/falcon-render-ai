@@ -11,6 +11,7 @@ import {
   type Style,
 } from "@/lib/api";
 import RenderJob from "../components/render-job";
+import { useAuth } from "@/lib/auth";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPTED_MIMES = ["image/png", "image/jpeg", "image/webp"];
@@ -197,6 +198,7 @@ function Dropzone({
 }
 
 export default function StudioPage() {
+  const { session } = useAuth();
   const [health, setHealth] = useState<HealthState>("checking");
   const [sketch, setSketch] = useState<File | null>(null);
   const [sketchPreview, setSketchPreview] = useState<string | null>(null);
@@ -276,8 +278,9 @@ export default function StudioPage() {
     setUploading(true);
     setUploadError(null);
     try {
-      const created = await createRender(sketch, preset, style, reference);
-      const detail = await getRender(created.id);
+      const token = session?.access_token;
+      const created = await createRender(sketch, preset, style, reference, token);
+      const detail = await getRender(created.id, token);
       setJob(detail);
       // Scroll to the result once it renders.
       requestAnimationFrame(() => {

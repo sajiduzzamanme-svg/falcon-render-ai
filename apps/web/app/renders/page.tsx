@@ -10,15 +10,19 @@ function formatDate(value: string): string {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
 }
 
-function thumbnailFor(item: RenderItem): { src: string; alt: string } {
+function thumbnailFor(item: RenderItem): { src: string; fallback: string; alt: string } {
+  const sketch = fileUrl(`/api/v1/files/${encodeURIComponent(item.id)}/sketch`);
   if (item.status === "succeeded") {
     return {
-      src: fileUrl(`/api/v1/files/${encodeURIComponent(item.id)}/render`),
+      // Watermarked preview is public; the full-resolution file is gated.
+      src: fileUrl(`/api/v1/files/${encodeURIComponent(item.id)}/preview`),
+      fallback: sketch,
       alt: `Render of job ${item.id}`,
     };
   }
   return {
-    src: fileUrl(`/api/v1/files/${encodeURIComponent(item.id)}/sketch`),
+    src: sketch,
+    fallback: sketch,
     alt: `Sketch for job ${item.id} (render not available yet)`,
   };
 }
@@ -107,6 +111,11 @@ export default function GalleryPage() {
                   alt={thumb.alt}
                   className="aspect-[4/3] w-full object-cover bg-slate-50"
                   loading="lazy"
+                  onError={(e) => {
+                    // Older jobs predate watermarked previews — fall back.
+                    const el = e.currentTarget;
+                    if (el.src !== thumb.fallback) el.src = thumb.fallback;
+                  }}
                 />
                 <div className="space-y-2 border-t border-slate-100 px-4 py-3">
                   <StatusBadge status={item.status} />

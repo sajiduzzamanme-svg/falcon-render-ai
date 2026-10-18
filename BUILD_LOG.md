@@ -138,3 +138,80 @@ Test artifacts cleaned; storage/ empty; no secrets committed (secret scan: clean
   after the test run.
 - NOT VERIFIED: end-to-end render with live provider key (no render key in
   this env — the generate->settle path is unit-tested, not live-fired).
+
+## 2026-10-18 — Supabase Auth: signup-gated download + watermarked previews
+
+- Backend `app/auth.py` (new): verifies Supabase-issued access JWTs against
+  the project's JWKS (ES256, kid match, exp, aud="authenticated"), cached 1h,
+  fetched via the shared httpx client. `get_current_user` (401 on
+  missing/invalid/expired), `get_optional_user` (None when anonymous, 401
+  when a token is present but invalid — fail closed). JWKS URL from
+  `SUPABASE_JWKS_URL` env, default = project JWKS endpoint. No secrets in
+  code. `app/storage.py` (new): Storage API client using the server-only
+  secret key (apikey header) — `upload()` + `create_signed_url()` (3600s).
+- Backend `app/routes/renders.py`:
+  - `user_id` wired from the verified JWT into `jobs.create` on upload
+    (backend), `ensure_can_generate` (credits/trial), and `_run_generation`.
+  - `_run_generation` now also writes a watermarked 900px-max
+    `preview.png` ("FALCON RENDER AI · PREVIEW" banner) alongside every
+    successful render and uploads the render to the `renders` bucket
+    (best-effort; logged, never fails the job).
+  - `GET /files/{id}/render` is now signup-gated: 401 anonymous, 403 when
+    the job belongs to another user. Owner-only access when `user_id` is
+    set; anonymous-created jobs are downloadable by any signed-in user.
+  - `GET /files/{id}/preview` is PUBLIC (watermarked preview for anonymous
+    visitors, per the UX plan). Added to `FILE_KINDS` and job detail
+    `artifacts.preview`.
+  - NEW `GET /renders/{id}/download`: auth required; returns a minted
+    `download_url` (Storage signed URL 3600s in Supabase mode, absolute
+    direct-file URL in local JSON mode) + `expires_in`.
+  - `main.py` gained an `HTTPException` handler rendering the app's
+    `{"error": {"code", "message"}}` convention, so failed auth never
+    produces a stack trace.
+  - Known spec tension: the task says "anonymous users get watermarked
+    preview only" — a job created anonymously in JSON mode is downloadable
+    by any signed-in user (any session, not just the creator). Tightening
+    to creator-only would need a claim/cookie binding on anonymous jobs;
+    flagged for product decision.
+- Frontend:
+  - `@supabase/supabase-js` installed; `lib/supabase.ts` (browser client,
+    publishable key only — NEVER the secret); `lib/auth.tsx`
+    (AuthProvider: session/user/loading/signOut, localStorage persistence).
+  - New `/login` page: email sign-in/sign-up + Google OAuth button.
+  - Nav now auth-aware (`components/auth-nav.tsx`): Sign in button vs
+    email + Sign out.
+  - `render-job.tsx`: anonymous users see the watermarked preview in the
+    figure and compare slider; Download button reads "Sign up to download
+    full resolution" and routes to `/login?next=/renders/{id}`; signed-in
+    users get the full-res render and a token-authenticated download
+    (fetch→blob→save as `falcon-render-{id}.png`).
+  - Gallery (`/renders`) thumbnails use the public preview endpoint with
+    onError fallback to the sketch (older jobs predate previews).
+  - `lib/api.ts`: `authHeaders` helper + optional `accessToken` on
+    `createRender`/`getRender`/`generateRender` (Studio and RenderJob send
+    the session token so jobs/credits attach to the right profile), plus
+    `getDownloadUrl`/`downloadRender`.
+  - `apps/api/.env.example` and `apps/web/.env.example` document all env
+    vars. Publishable key via env only; secret key never in frontend.
+- Tests: `apps/api/tests/test_auth.py` (14 new) — JWT verify with a local
+  EC P-256 keypair injected into the JWKS cache: valid accepted;
+  wrong-signature / unknown-kid / expired / malformed / wrong-audience
+  rejected; route gating via dependency_overrides: 401 anonymous on
+  `/files/{id}/render` and `/renders/{id}/download`, 200 authed, 403 on
+  another user's job, `user_id` attached on creation, preview stays public,
+  preview generation makes a ≤900px watermarked PNG. Two pre-existing
+  `test_api.py` tests updated for the new gating (anonymous → 401 before
+  the artifact check; the generate-success test now signs in for the file
+  check and its mock returns real PNG bytes so preview generation works).
+- Results: **59/59 backend tests pass** (45 pre-existing + 14 new), ruff
+  check + format clean, `tsc --noEmit` clean, `next build` succeeds (8/8
+  pages, incl. new `/login`). Live smoke test of the running server:
+  anonymous upload → 201, `/files/{id}/render` → 401, `/renders/{id}/
+  download` → 401, job detail → 200.
+- MANUAL STEP FOR USER (Supabase dashboard > Authentication > Providers):
+  enable the Google provider (button is wired but the provider is off until
+  enabled). Also set a Site URL / redirect URLs for the OAuth callback.
+- NOT VERIFIED: live end-to-end signup → download (no publishable key in
+  this env — the publishable `NEXT_PUBLIC_SUPABASE_ANON_KEY` is needed to
+  run the real auth flow; the backend verifier and gating are unit-tested
+  with injected keypairs, not against a real issued token).

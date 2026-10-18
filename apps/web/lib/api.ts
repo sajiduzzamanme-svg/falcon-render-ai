@@ -53,6 +53,7 @@ export interface RenderDetail extends RenderItem {
     edge: string;
     reference: string | null;
     render: string | null;
+    preview: string | null;
   };
 }
 
@@ -83,6 +84,10 @@ interface BackendErrorBody {
 
 const NETWORK_FAILURE_MESSAGE =
   "Could not reach the API server. Make sure the backend is running and NEXT_PUBLIC_API_URL is correct.";
+
+function authHeaders(token?: string): HeadersInit {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -124,6 +129,7 @@ export function createRender(
   preset: Preset,
   style: Style,
   reference?: File | null,
+  accessToken?: string,
 ): Promise<CreateRenderResponse> {
   const form = new FormData();
   form.append("file", file);
@@ -133,6 +139,7 @@ export function createRender(
   return request<CreateRenderResponse>("/api/v1/renders", {
     method: "POST",
     body: form,
+    headers: authHeaders(accessToken),
   });
 }
 
@@ -140,13 +147,71 @@ export function listRenders(): Promise<ListRendersResponse> {
   return request<ListRendersResponse>("/api/v1/renders");
 }
 
-export function getRender(id: string): Promise<RenderDetail> {
-  return request<RenderDetail>(`/api/v1/renders/${encodeURIComponent(id)}`);
+export function getRender(
+  id: string,
+  accessToken?: string,
+): Promise<RenderDetail> {
+  return request<RenderDetail>(`/api/v1/renders/${encodeURIComponent(id)}`, {
+    headers: authHeaders(accessToken),
+  });
 }
 
-export function generateRender(id: string): Promise<GenerateRenderResponse> {
+export function generateRender(
+  id: string,
+  accessToken?: string,
+): Promise<GenerateRenderResponse> {
   return request<GenerateRenderResponse>(
     `/api/v1/renders/${encodeURIComponent(id)}/generate`,
-    { method: "POST" },
+    { method: "POST", headers: authHeaders(accessToken) },
   );
+}
+
+export interface DownloadUrlResponse {
+  download_url: string;
+  expires_in: number | null;
+}
+
+/** Signed-in only: mint a download URL for the full-resolution render. */
+export function getDownloadUrl(
+  id: string,
+  accessToken: string,
+): Promise<DownloadUrlResponse> {
+  return request<DownloadUrlResponse>(
+    `/api/v1/renders/${encodeURIComponent(id)}/download`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+}
+
+/**
+ * Download the full-resolution render to the user's device.
+ * Fetches with the session token (works for both signed Storage URLs and
+ * the local-dev direct file URL, which requires the token).
+ */
+export async function downloadRender(
+  id: string,
+  accessToken: string,
+): Promise<void> {
+  const { download_url } = await getDownloadUrl(id, accessToken);
+  const res = await fetch(download_url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      "DOWNLOAD_FAILED",
+      `Download failed with HTTP ${res.status}.`,
+    );
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = `falcon-render-${id}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+  }
 }

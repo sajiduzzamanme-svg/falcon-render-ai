@@ -49,6 +49,7 @@ class Artifacts(BaseModel):
     edge: str
     reference: str | None = None
     render: str | None = None
+    preview: str | None = None
 
 
 class RenderJobResponse(BaseModel):

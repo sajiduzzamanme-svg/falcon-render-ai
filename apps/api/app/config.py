@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # legacy service_role JWT does not work via the apikey header alone).
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_KEY: str = ""
+    # Public JWKS for verifying Supabase-issued user access JWTs (auth.py).
+    # No secret: verification uses the project's public signing keys.
+    SUPABASE_JWKS_URL: str = (
+        "https://pzdtgkgfsleyafhqvujd.supabase.co/auth/v1/.well-known/jwks.json"
+    )
 
 
 settings = Settings()

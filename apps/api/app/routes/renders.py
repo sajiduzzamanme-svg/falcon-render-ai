@@ -7,14 +7,15 @@ import threading
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from .. import credits
 from ..adapters.base import ProviderNotConfigured, RenderAdapter, RenderFailed
 from ..adapters.gemini import GeminiRenderAdapter
 from ..adapters.openrouter import OpenRouterRenderAdapter
+from ..auth import get_current_user, get_optional_user
 from ..config import settings
 from ..fidelity import FidelityError, fidelity_score
 from ..geometry import GeometryError, extract_edges
@@ -26,6 +27,8 @@ from ..schemas import (
     RenderJobResponse,
     RenderListResponse,
 )
+from ..storage import get_storage_client
+from ..supabase_client import is_configured
 
 router = APIRouter()
 
@@ -33,7 +36,10 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_FORMATS = {"PNG", "JPEG", "WEBP"}
-FILE_KINDS = {"sketch", "edge", "render", "reference"}
+FILE_KINDS = {"sketch", "edge", "render", "reference", "preview"}
+
+PREVIEW_MAX_PX = 900
+SIGNED_URL_TTL_SECONDS = 3600
 
 
 def error_response(http_status: int, code: str, message: str) -> JSONResponse:
@@ -75,8 +81,47 @@ def _job_to_detail(record: dict) -> dict:
         "render": f"/api/v1/files/{job_id}/render"
         if jobs.artifact_path(job_id, "render").exists()
         else None,
+        "preview": f"/api/v1/files/{job_id}/preview"
+        if jobs.artifact_path(job_id, "preview").exists()
+        else None,
     }
     return detail
+
+
+def _can_access_job(record: dict, user: dict) -> bool:
+    """Ownership rule for full-resolution artifacts.
+
+    Jobs created before signup (user_id None) stay downloadable by any
+    signed-in user; jobs created signed-in are restricted to their owner.
+    Job ids are unguessable UUIDs, so this is a reasonable beta gate.
+    """
+    owner = record.get("user_id")
+    return owner is None or owner == user["id"]
+
+
+def _make_preview(src: Path, dst: Path) -> None:
+    """Write a watermarked, downscaled preview of a finished render.
+
+    Anonymous visitors see only this; the full-resolution file requires
+    a signed-in session (signup gate).
+    """
+    with Image.open(src) as img:
+        img = img.convert("RGB")
+        img.thumbnail((PREVIEW_MAX_PX, PREVIEW_MAX_PX), Image.LANCZOS)
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        banner_h = 34
+        draw.rectangle(
+            [0, img.height - banner_h, img.width, img.height],
+            fill=(15, 23, 42, 130),
+        )
+        draw.text(
+            (12, img.height - banner_h + 9),
+            "FALCON RENDER AI \u00b7 PREVIEW",
+            fill=(255, 255, 255, 235),
+        )
+        img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+        img.save(dst, "PNG")
 
 
 def _validate_image(
@@ -118,6 +163,7 @@ async def create_render(
     preset: str = Form(...),
     style: str = Form(...),
     reference: Annotated[UploadFile | None, File()] = None,
+    user: Annotated[dict | None, Depends(get_optional_user)] = None,
 ) -> JSONResponse:
     if preset not in PRESETS:
         return error_response(
@@ -137,7 +183,9 @@ async def create_render(
     if isinstance(validated, JSONResponse):
         return validated
 
-    record = jobs.create(preset=preset, style=style)
+    record = jobs.create(
+        preset=preset, style=style, user_id=user["id"] if user else None
+    )
     job_id = record["id"]
     try:
         sketch_path = jobs.artifact_path(job_id, "sketch")
@@ -239,7 +287,22 @@ def _run_generation(
         jobs.set_error(job_id, "RENDER_FAILED", str(exc))
         return
     assert best_bytes is not None
-    jobs.artifact_path(job_id, "render").write_bytes(best_bytes)
+    render_path = jobs.artifact_path(job_id, "render")
+    render_path.write_bytes(best_bytes)
+    # Watermarked public preview (anonymous visitors see only this).
+    try:
+        _make_preview(render_path, jobs.artifact_path(job_id, "preview"))
+    except Exception:
+        logger.exception("Preview generation failed for job %s", job_id)
+    # Mirror the full-resolution render into Supabase Storage (best-effort;
+    # the download endpoint mints signed URLs from the bucket).
+    if is_configured():
+        try:
+            storage = get_storage_client()
+            if storage is not None:
+                storage.upload("renders", f"{job_id}/render.png", best_bytes)
+        except Exception:
+            logger.exception("Storage upload failed for job %s", job_id)
     jobs.update(
         job_id,
         status=JobStatus.SUCCEEDED.value,
@@ -267,7 +330,11 @@ def _client_hash(request: Request) -> str:
 
 
 @router.post("/renders/{job_id}/generate", status_code=status.HTTP_202_ACCEPTED)
-def generate_render(job_id: str, request: Request) -> JSONResponse:
+def generate_render(
+    job_id: str,
+    request: Request,
+    user: Annotated[dict | None, Depends(get_optional_user)] = None,
+) -> JSONResponse:
     record = jobs.get(job_id)
     if record is None:
         return job_not_found(job_id)
@@ -295,8 +362,9 @@ def generate_render(job_id: str, request: Request) -> JSONResponse:
 
     # Credit gate (ADR 0003): no-op when Supabase is not configured.
     client_hash = _client_hash(request)
+    user_id = user["id"] if user else None
     try:
-        credits.ensure_can_generate(user_id=None, client_hash=client_hash)
+        credits.ensure_can_generate(user_id=user_id, client_hash=client_hash)
     except credits.InsufficientCredits as exc:
         return error_response(
             status.HTTP_402_PAYMENT_REQUIRED, "INSUFFICIENT_CREDITS", str(exc)
@@ -310,7 +378,7 @@ def generate_render(job_id: str, request: Request) -> JSONResponse:
     thread = threading.Thread(
         target=_run_generation,
         args=(job_id,),
-        kwargs={"client_hash": client_hash},
+        kwargs={"user_id": user_id, "client_hash": client_hash},
         daemon=True,
     )
     thread.start()
@@ -322,13 +390,33 @@ def generate_render(job_id: str, request: Request) -> JSONResponse:
 
 
 @router.get("/files/{job_id}/{kind}")
-def get_file(job_id: str, kind: str):
+def get_file(
+    job_id: str,
+    kind: str,
+    user: Annotated[dict | None, Depends(get_optional_user)] = None,
+):
     if kind not in FILE_KINDS:
         return error_response(
             status.HTTP_404_NOT_FOUND,
             "ARTIFACT_NOT_FOUND",
             f"No artifact '{kind}' for job '{job_id}'.",
         )
+    # Signup gate: the full-resolution render needs a signed-in session.
+    # Anonymous visitors get the watermarked preview via /files/{id}/preview.
+    if kind == "render":
+        if user is None:
+            return error_response(
+                status.HTTP_401_UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "Sign in to view full-resolution renders.",
+            )
+        record = jobs.get(job_id)
+        if record is not None and not _can_access_job(record, user):
+            return error_response(
+                status.HTTP_403_FORBIDDEN,
+                "FORBIDDEN",
+                "This render belongs to another account.",
+            )
     path = jobs.artifact_path(job_id, kind)
     if not path.exists():
         return error_response(
@@ -337,3 +425,58 @@ def get_file(job_id: str, kind: str):
             f"No artifact '{kind}' for job '{job_id}'.",
         )
     return FileResponse(path, media_type="image/png")
+
+
+@router.get("/renders/{job_id}/download")
+def download_render(
+    job_id: str,
+    request: Request,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> JSONResponse:
+    """Mint a download URL for the full-resolution render.
+
+    Requires a valid Supabase session (401 otherwise). With Supabase
+    configured, returns a time-limited signed Storage URL; in local-dev
+    mode, the direct file URL (the caller still sends its token).
+    """
+    record = jobs.get(job_id)
+    if record is None:
+        return job_not_found(job_id)
+    if not _can_access_job(record, user):
+        return error_response(
+            status.HTTP_403_FORBIDDEN,
+            "FORBIDDEN",
+            "This render belongs to another account.",
+        )
+    if not jobs.artifact_path(job_id, "render").exists():
+        return error_response(
+            status.HTTP_404_NOT_FOUND,
+            "ARTIFACT_NOT_FOUND",
+            f"No render artifact for job '{job_id}'.",
+        )
+    if is_configured():
+        try:
+            storage = get_storage_client()
+            if storage is not None:
+                url = storage.create_signed_url(
+                    "renders",
+                    f"{job_id}/render.png",
+                    expires_in=SIGNED_URL_TTL_SECONDS,
+                )
+                return JSONResponse(
+                    {
+                        "download_url": url,
+                        "expires_in": SIGNED_URL_TTL_SECONDS,
+                    }
+                )
+        except Exception:
+            logger.exception(
+                "Signed URL minting failed for job %s; falling back", job_id
+            )
+    base = str(request.base_url).rstrip("/")
+    return JSONResponse(
+        {
+            "download_url": f"{base}/api/v1/files/{job_id}/render",
+            "expires_in": None,
+        }
+    )

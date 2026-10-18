@@ -144,9 +144,20 @@ def test_file_download_sketch_and_edge(client: TestClient) -> None:
 
 def test_render_before_generation_404(client: TestClient) -> None:
     job_id = _upload(client, _png_bytes()).json()["id"]
+    # Anonymous callers are gated before the artifact check.
     resp = client.get(f"/api/v1/files/{job_id}/render")
-    assert resp.status_code == 404
-    assert resp.json()["error"]["code"] == "ARTIFACT_NOT_FOUND"
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "UNAUTHORIZED"
+    # Signed-in callers still get 404 when no render exists yet.
+    from app.auth import get_optional_user
+
+    client.app.dependency_overrides[get_optional_user] = lambda: {"id": "u1"}
+    try:
+        resp = client.get(f"/api/v1/files/{job_id}/render")
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == "ARTIFACT_NOT_FOUND"
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_double_generate_guard_409(
@@ -208,7 +219,7 @@ def test_generate_with_openrouter_key_succeeds(
 
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
     monkeypatch.setattr(
-        OpenRouterRenderAdapter, "generate", lambda self, *a, **k: b"fake-png-bytes"
+        OpenRouterRenderAdapter, "generate", lambda self, *a, **k: _png_bytes(400, 300)
     )
     job_id = _upload(client, _png_bytes()).json()["id"]
     resp = client.post(f"/api/v1/renders/{job_id}/generate")
@@ -223,8 +234,20 @@ def test_generate_with_openrouter_key_succeeds(
     assert body["fidelity_score"] is not None
     assert 0.0 <= body["fidelity_score"] <= 1.0
     assert body["fidelity_attempts"] >= 1
+    # The full-resolution file endpoint is signup-gated: anonymous -> 401.
     resp = client.get(f"/api/v1/files/{job_id}/render")
-    assert resp.status_code == 200
+    assert resp.status_code == 401
+    from app.auth import get_optional_user
+
+    client.app.dependency_overrides[get_optional_user] = lambda: {"id": "u1"}
+    try:
+        resp = client.get(f"/api/v1/files/{job_id}/render")
+        assert resp.status_code == 200
+        # A watermarked preview was generated alongside the render.
+        resp = client.get(f"/api/v1/files/{job_id}/preview")
+        assert resp.status_code == 200
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_fidelity_gate_retries_until_max_attempts(
