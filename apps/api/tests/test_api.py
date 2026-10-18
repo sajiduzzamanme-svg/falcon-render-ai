@@ -17,6 +17,10 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(settings, "STORAGE_DIR", tmp_path / "storage")
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "")
+    # Force the JSON store: these contract tests must not touch live Supabase
+    # even if SUPABASE_* env vars happen to be set.
+    monkeypatch.setattr(settings, "SUPABASE_URL", "")
+    monkeypatch.setattr(settings, "SUPABASE_SERVICE_KEY", "")
     return TestClient(app)
 
 

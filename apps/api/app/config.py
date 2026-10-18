@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     STORAGE_DIR: Path = REPO_ROOT / "storage"
     MAX_UPLOAD_MB: int = 10
+    # Supabase (ADR 0002). When both are set, the Supabase job store +
+    # credit ledger are used; otherwise the local JSON store (local dev).
+    # SUPABASE_SERVICE_KEY must be the sb_secret_... Secret API key (the
+    # legacy service_role JWT does not work via the apikey header alone).
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
 
 
 settings = Settings()

@@ -1,21 +1,24 @@
 """Render job endpoints."""
 
+import hashlib
 import io
+import logging
 import threading
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 
-from .. import jobs
+from .. import credits
 from ..adapters.base import ProviderNotConfigured, RenderAdapter, RenderFailed
 from ..adapters.gemini import GeminiRenderAdapter
 from ..adapters.openrouter import OpenRouterRenderAdapter
 from ..config import settings
 from ..fidelity import FidelityError, fidelity_score
 from ..geometry import GeometryError, extract_edges
+from ..job_store import jobs
 from ..schemas import (
     PRESETS,
     STYLES,
@@ -25,6 +28,8 @@ from ..schemas import (
 )
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_FORMATS = {"PNG", "JPEG", "WEBP"}
@@ -192,7 +197,9 @@ def _select_adapter() -> RenderAdapter | None:
     return None
 
 
-def _run_generation(job_id: str) -> None:
+def _run_generation(
+    job_id: str, *, user_id: str | None = None, client_hash: str | None = None
+) -> None:
     record = jobs.get(job_id)
     if record is None:
         return
@@ -240,10 +247,27 @@ def _run_generation(job_id: str) -> None:
         fidelity_score=round(best_score, 4),
         fidelity_attempts=attempts,
     )
+    # Credit settlement (ADR 0003): 10 credits per completed render, retries
+    # free, failures never charged. Charging must never fail the render.
+    try:
+        credits.settle_job(
+            job_id=job_id,
+            succeeded=True,
+            user_id=user_id,
+            client_hash=client_hash,
+        )
+    except Exception:
+        logger.exception("Credit settlement failed for job %s", job_id)
+
+
+def _client_hash(request: Request) -> str:
+    """Abuse-limited device/IP fingerprint for the anonymous free trial."""
+    host = request.client.host if request.client else "unknown"
+    return hashlib.sha256(host.encode("utf-8")).hexdigest()
 
 
 @router.post("/renders/{job_id}/generate", status_code=status.HTTP_202_ACCEPTED)
-def generate_render(job_id: str) -> JSONResponse:
+def generate_render(job_id: str, request: Request) -> JSONResponse:
     record = jobs.get(job_id)
     if record is None:
         return job_not_found(job_id)
@@ -269,8 +293,26 @@ def generate_render(job_id: str) -> JSONResponse:
             "Render generation already succeeded for this job.",
         )
 
+    # Credit gate (ADR 0003): no-op when Supabase is not configured.
+    client_hash = _client_hash(request)
+    try:
+        credits.ensure_can_generate(user_id=None, client_hash=client_hash)
+    except credits.InsufficientCredits as exc:
+        return error_response(
+            status.HTTP_402_PAYMENT_REQUIRED, "INSUFFICIENT_CREDITS", str(exc)
+        )
+    except credits.FreeTrialExhausted as exc:
+        return error_response(
+            status.HTTP_403_FORBIDDEN, "FREE_TRIAL_EXHAUSTED", str(exc)
+        )
+
     jobs.update(job_id, status=JobStatus.PROCESSING.value)
-    thread = threading.Thread(target=_run_generation, args=(job_id,), daemon=True)
+    thread = threading.Thread(
+        target=_run_generation,
+        args=(job_id,),
+        kwargs={"client_hash": client_hash},
+        daemon=True,
+    )
     thread.start()
 
     return JSONResponse(

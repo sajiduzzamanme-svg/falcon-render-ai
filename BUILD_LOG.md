@@ -87,3 +87,54 @@ Test artifacts cleaned; storage/ empty; no secrets committed (secret scan: clean
   with Supabase Auth), fidelity badge already present.
 - Tests: 30/30 pass (3 new reference-upload tests); ruff clean; tsc clean;
   `npm run build` OK. Screenshots verified via local Playwright.
+
+## 2026-10-18 — Supabase backend wiring (ADR 0002)
+- New `apps/api/app/supabase_client.py`: minimal PostgREST client over httpx.
+  Secret server key travels in the `apikey` header (verified working pattern
+  for `sb_secret_...` keys; the legacy `service_role` JWT does NOT bypass
+  RLS via `apikey` alone — verified against the live project). Key is read
+  from env only (`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`), never logged.
+  Reuses `adapters/http.py` `http_client` (trust_env=False + explicit proxy)
+  to avoid the known httpx env-proxy crash.
+- New `apps/api/app/jobs_supabase.py`: Supabase-backed job store with the
+  same interface as `jobs.py` (`create/get/list_jobs/update/set_error/
+  artifact_path`). Field mapping: app `preset` <-> DB `lighting`; `error`
+  dict <-> JSON TEXT; `updated_at` reported as `created_at` (the `jobs`
+  table has no `updated_at` column — future migration candidate). Artifacts
+  stay on local disk under STORAGE_DIR (Supabase Storage is a later step).
+- New `apps/api/app/job_store.py`: backend selection proxy. Supabase is used
+  when both env vars are set, else the JSON file store (local-dev fallback).
+  Resolves per access, so tests can switch via monkeypatched settings.
+  Routes changed one line: `from .. import jobs` -> `from ..job_store import
+  jobs`; all call sites untouched.
+- New `apps/api/app/credits.py` (ADR 0003): `CREDITS_PER_RENDER = 10`.
+  `ensure_can_generate` runs at generate time (402 INSUFFICIENT_CREDITS /
+  403 FREE_TRIAL_EXHAUSTED); `settle_job` deducts 10 on success (ledger
+  reason='render', profiles.credits, jobs.credits_charged), consumes the
+  anonymous free trial (`anonymous_trials` by SHA256 IP hash) on success.
+  Failed renders never touch credits. SPEC TENSION: the wiring brief said
+  "deduct 10 per render ATTEMPT (fidelity retry loop!)"; implemented per
+  ADR 0003 instead — one charge per completed render, fidelity retries free
+  — since ADR 0003 is the accepted pricing decision. One-function change in
+  `settle_job` if per-attempt billing is wanted.
+- Routes: `POST /renders/{id}/generate` takes `request: Request` for the
+  client hash; `_run_generation` accepts `user_id`/`client_hash` kwargs and
+  settles credits after a successful render (settlement failures are logged
+  server-side and never fail the render — known gap: no transactional
+  outbox yet). Auth (signup-gated download) is intentionally NOT
+  implemented — separate next step; `user_id` plumbing is ready.
+- `config.py`: added `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` ("" = JSON mode).
+- Tests: `apps/api/tests/test_supabase_store.py` — 15 new tests: store
+  selection, proxy delegation, CRUD round-trip, lighting/preset mapping,
+  error serialization, list ordering, charge math (100 -> 90, ledger
+  -10/'render', credits_charged=10), failed-never-charged, insufficient
+  credits, anonymous trial flow (incl. failed render not burning trial),
+  JSON-fallback no-ops, plus 2 LIVE tests (CRUD + trial) against the real
+  project via the connector surrogate (skipped without credential; every
+  live row cleaned up). Existing `test_api.py` fixture now forces JSON mode
+  so the suite is hermetic.
+- Results: **45/45 pass** (30 pre-existing + 15 new), ruff check + format
+  clean. Live verification via `bin/sb-rest`: tables exist and are empty
+  after the test run.
+- NOT VERIFIED: end-to-end render with live provider key (no render key in
+  this env — the generate->settle path is unit-tested, not live-fired).
