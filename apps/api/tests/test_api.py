@@ -4,17 +4,19 @@ import io
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+from PIL import Image
+
 from app import jobs
 from app.config import settings
 from app.main import app
-from fastapi.testclient import TestClient
-from PIL import Image
 
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(settings, "STORAGE_DIR", tmp_path / "storage")
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "")
     return TestClient(app)
 
 
@@ -163,3 +165,42 @@ def test_generate_succeeded_guard_409(
     resp = client.post(f"/api/v1/renders/{job_id}/generate")
     assert resp.status_code == 409
     assert resp.json()["error"]["code"] == "JOB_ALREADY_SUCCEEDED"
+
+
+def test_openrouter_adapter_selection_prefers_openrouter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.adapters.gemini import GeminiRenderAdapter
+    from app.adapters.openrouter import OpenRouterRenderAdapter
+    from app.routes.renders import _select_adapter
+
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "g-key")
+    adapter = _select_adapter()
+    assert isinstance(adapter, OpenRouterRenderAdapter)
+
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "")
+    adapter = _select_adapter()
+    assert isinstance(adapter, GeminiRenderAdapter)
+
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+    assert _select_adapter() is None
+
+
+def test_health_reports_openrouter_provider(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
+    resp = client.get("/api/v1/health")
+    assert resp.json()["render_provider"] == "openrouter"
+
+
+def test_generate_with_openrouter_key_accepts_job(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
+    resp = _upload(client, _png_bytes())
+    assert resp.status_code == 201
+    job_id = resp.json()["id"]
+    resp = client.post(f"/api/v1/renders/{job_id}/generate")
+    assert resp.status_code == 202

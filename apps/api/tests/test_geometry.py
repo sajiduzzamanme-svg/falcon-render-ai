@@ -5,6 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+
 from app.geometry import GeometryError, extract_edges
 
 

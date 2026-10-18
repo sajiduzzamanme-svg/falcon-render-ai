@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     GEMINI_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "google/gemini-2.5-flash-image"
     API_HOST: str = "127.0.0.1"
     API_PORT: int = 8000
     STORAGE_DIR: Path = REPO_ROOT / "storage"

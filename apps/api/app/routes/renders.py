@@ -9,8 +9,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 
 from .. import jobs
-from ..adapters.base import ProviderNotConfigured, RenderFailed
+from ..adapters.base import ProviderNotConfigured, RenderAdapter, RenderFailed
 from ..adapters.gemini import GeminiRenderAdapter
+from ..adapters.openrouter import OpenRouterRenderAdapter
 from ..config import settings
 from ..geometry import GeometryError, extract_edges
 from ..schemas import (
@@ -164,11 +165,29 @@ def get_render(job_id: str):
     return _job_to_detail(record)
 
 
+def _select_adapter() -> RenderAdapter | None:
+    """Prefer OpenRouter when its key is set, else direct Gemini. None = unconfigured."""
+    if OpenRouterRenderAdapter(
+        settings.OPENROUTER_API_KEY, settings.OPENROUTER_MODEL
+    ).configured:
+        return OpenRouterRenderAdapter(
+            settings.OPENROUTER_API_KEY, settings.OPENROUTER_MODEL
+        )
+    if GeminiRenderAdapter(settings.GEMINI_API_KEY).configured:
+        return GeminiRenderAdapter(settings.GEMINI_API_KEY)
+    return None
+
+
 def _run_generation(job_id: str) -> None:
     record = jobs.get(job_id)
     if record is None:
         return
-    adapter = GeminiRenderAdapter(settings.GEMINI_API_KEY)
+    adapter = _select_adapter()
+    if adapter is None:  # key removed between accept and run — fail honestly
+        jobs.set_error(
+            job_id, "RENDER_FAILED", "Render provider is no longer configured."
+        )
+        return
     try:
         image_bytes = adapter.generate(
             jobs.artifact_path(job_id, "sketch"),
@@ -189,11 +208,11 @@ def generate_render(job_id: str) -> JSONResponse:
     if record is None:
         return job_not_found(job_id)
 
-    if not GeminiRenderAdapter(settings.GEMINI_API_KEY).configured:
+    if _select_adapter() is None:
         return error_response(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "RENDER_PROVIDER_NOT_CONFIGURED",
-            "Set GEMINI_API_KEY to enable render generation.",
+            "Set OPENROUTER_API_KEY or GEMINI_API_KEY to enable render generation.",
         )
 
     current = record["status"]

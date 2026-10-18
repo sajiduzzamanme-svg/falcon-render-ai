@@ -33,7 +33,7 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     version: str = "0.1.0"
     geometry: str = "opencv"
-    render_provider: Literal["gemini", "unconfigured"]
+    render_provider: Literal["gemini", "openrouter", "unconfigured"]
 
 
 class RenderCreateResponse(BaseModel):
