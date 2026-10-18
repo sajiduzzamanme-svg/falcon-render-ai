@@ -73,3 +73,17 @@ Test artifacts cleaned; storage/ empty; no secrets committed (secret scan: clean
 - Tests: 27/27 pass (6 new fidelity unit tests incl. identical/blank/shifted/
   resized/unreadable cases, retry-until-max-attempts, score in job detail);
   ruff clean; tsc clean; `npm run build` OK.
+
+## 2026-10-18 — Studio v0.2 UI rebuild
+- Reference image upload (optional): validated like sketch, stored as
+  reference.png, served via /files/{id}/reference, shown as 4th panel.
+  Adapters send it as a third, style-only image (materials/colors/mood —
+  never geometry) with updated fidelity prompt.
+- Studio home rebuilt: numbered steps, dual dropzones (sketch required /
+  reference optional) with clear geometry-vs-style copy, visual preset cards
+  (gradient swatches) for lighting + style, Generate CTA.
+- RenderJob: reference panel, sketch-vs-render CompareSlider (drag +
+  keyboard), Download button (beta: direct; note that signup gate ships
+  with Supabase Auth), fidelity badge already present.
+- Tests: 30/30 pass (3 new reference-upload tests); ruff clean; tsc clean;
+  `npm run build` OK. Screenshots verified via local Playwright.
