@@ -59,3 +59,17 @@ Test artifacts cleaned; storage/ empty; no secrets committed (secret scan: clean
 - Fixed env-specific httpx crash (NO_PROXY `*[::1]` entries break env-proxy mount parsing) via `app/adapters/http.py`: trust_env=False + explicit proxy + system CA bundle (egress TLS interception).
 - Live E2E with real key (transient, never stored): health 200 (provider=openrouter) → upload 201 → generate 202 → succeeded; 1.3MB render downloaded and visually confirmed geometry-faithful to the input massing.
 - Tests: 20/20 pass, ruff clean.
+
+## 2026-10-18 — Fidelity scorer (geometry drift detector)
+- New `app/fidelity.py`: edge-recall score (0.0–1.0) of each render against the
+  sketch edge map (tolerance 3px). Recall, not precision — renders legitimately
+  add edges (foliage/texture); what matters is sketch edges surviving.
+- Calibrated on real renders: faithful (edge-conditioned) ~0.66, roof-drifted
+  ~0.45. Suggested FIDELITY_MIN_SCORE start: 0.55 (default 0.0 = gate off,
+  score still recorded — no surprise provider spend).
+- `_run_generation` retries up to FIDELITY_MAX_ATTEMPTS while score < gate;
+  best attempt always kept; score + attempts stored on job, exposed via API.
+- UI: fidelity badge on job detail + gallery; 503 notice mentions both keys.
+- Tests: 27/27 pass (6 new fidelity unit tests incl. identical/blank/shifted/
+  resized/unreadable cases, retry-until-max-attempts, score in job detail);
+  ruff clean; tsc clean; `npm run build` OK.
