@@ -38,3 +38,18 @@
   routes, type checking passed.
 - README.md: added Frontend section (setup / dev with NEXT_PUBLIC_API_URL /
   build / pages). No .env files committed (only repo-root .env.example).
+
+## 2026-10-18 — Coordinator personal verification (Phase 1)
+Re-ran everything the workers built; did not trust their reports alone.
+
+Backend (commit 874f5f0):
+- `pytest apps/api/tests -q` → **17 passed** (3 geometry + 14 API), re-run by coordinator.
+- `ruff check` + `ruff format --check` → clean.
+- Live E2E vs real uvicorn server (zero mocks): health 200 (`render_provider: unconfigured`); PNG upload → 201 queued; detail shows sketch/edge URLs + render:null; edge download 200 image/png with dims identical to input (400×300) and 2492 edge pixels (real Canny output); render-before-generation → 404; generate without key → **503 RENDER_PROVIDER_NOT_CONFIGURED** (honest, no fake image); bad extension → 422 INVALID_UPLOAD; bad preset → 422; unknown job → 404. Test job removed from storage/ afterwards.
+
+Frontend (commit e7f9885):
+- `npx tsc --noEmit` → clean. `npm run build` → success, routes: /, /renders, /renders/[id], /_not-found.
+- Full-stack smoke: `next start` + uvicorn together → / → 200 ("Falcon Render AI"), /renders → 200, /renders/abc123 → 200, backend health ok.
+
+Regressions fixed during verification: none (workers' code passed as-is).
+Test artifacts cleaned; storage/ empty; no secrets committed (secret scan: clean).
