@@ -20,3 +20,7 @@ storage/
 
 # OS
 .DS_Store
+
+# Next.js generated
+apps/web/next-env.d.ts
+apps/web/tsconfig.tsbuildinfo

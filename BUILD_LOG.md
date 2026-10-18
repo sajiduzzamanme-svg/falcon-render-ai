@@ -19,3 +19,22 @@
 - Live smoke test on uvicorn :8123: health/upload/detail/edge download/render-404/generate-503/bad-upload-422/list all matched contract; smoke job cleaned from storage/.
 - `apps/api/requirements.txt` pinned; README.md Backend section added (setup, run, env, API table, live-generation curl).
 - NOT VERIFIED: actual Gemini live generation (no GEMINI_API_KEY available); the 202→background-thread→adapter→render.png path is exercised only via 503/409/404 guards. needs real key + curl POST localhost:8000/api/v1/renders/{id}/generate to verify.
+
+## 2026-10-18 — Phase 1 frontend (apps/web)
+- Hand-scaffolded Next.js 14.2.35 + React 18.3.1 + TypeScript (strict) +
+  Tailwind 3.4.19 in `apps/web/` (no create-next-app).
+- Files: `package.json`, `tsconfig.json` (strict: true), `next.config.mjs`,
+  `tailwind.config.ts` (content: ./app/**), `postcss.config.mjs`,
+  `app/layout.tsx`, `app/globals.css`, `lib/api.ts` (typed client + ApiError
+  {status, code, message}, fileUrl), `app/components/status-badge.tsx`,
+  `app/components/render-job.tsx` (shared job panel: sketch / edge-map
+  geometry-lock / render panels, generate button, 2s polling, 503 + failed
+  handling), `app/page.tsx` (health badge, drag-drop + click upload,
+  client-side type/size ≤10MB validation, preset segmented control, style
+  select, job card), `app/renders/page.tsx` (gallery grid, honest empty/error
+  states), `app/renders/[id]/page.tsx` (detail with generate for queued/failed).
+- `npx tsc --noEmit` → exit 0, no errors.
+- `npm run build` → exit 0: "✓ Compiled successfully", 5 static/dynamic
+  routes, type checking passed.
+- README.md: added Frontend section (setup / dev with NEXT_PUBLIC_API_URL /
+  build / pages). No .env files committed (only repo-root .env.example).

@@ -82,6 +82,49 @@ curl -s localhost:8000/api/v1/renders/<id> | grep '"status"'
 curl -s -o render.png localhost:8000/api/v1/files/<id>/render
 ```
 
+## Frontend
+
+The Next.js 14 app lives in `apps/web/` (scaffolded by hand, no
+create-next-app). It talks to the backend at
+`process.env.NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8000`).
+
+### Setup
+
+```bash
+cd apps/web
+npm install
+```
+
+### Run (dev)
+
+```bash
+# default API base is http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
+```
+
+### Build
+
+```bash
+npm run build
+npm start
+```
+
+Type checks: `npx tsc --noEmit`. Build: `npm run build`.
+
+### Pages
+
+- `/` — upload a sketch (drag-drop or click-to-browse, PNG/JPG/WebP ≤ 10 MB,
+  validated client-side), pick a lighting preset (Daylight / Dusk / Night) and
+  a style (Modern / Minimalist / Warm), then generate the render. Every job
+  shows the sketch, the edge map labeled as the geometry lock, and the render
+  with live 2 s polling. HTTP 503 from the provider surfaces an amber
+  "set GEMINI_API_KEY on the API server and retry" banner; failures show the
+  server message with a retry.
+- `/renders` — gallery of all jobs (render thumbnail when succeeded, sketch
+  thumbnail otherwise), with honest empty and error states.
+- `/renders/[id]` — job detail: Sketch / Edge map (geometry lock) / Render
+  panels, metadata, and a Generate button for queued or failed jobs.
+
 ## Docs
 
 - `docs/decisions/0001-stack-and-scope.md` — stack + Phase 1 scope
