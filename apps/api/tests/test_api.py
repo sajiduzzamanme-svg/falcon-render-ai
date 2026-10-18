@@ -216,5 +216,34 @@ def test_generate_with_openrouter_key_succeeds(
             break
         time.sleep(0.05)
     assert body["status"] == "succeeded"
+    assert body["fidelity_score"] is not None
+    assert 0.0 <= body["fidelity_score"] <= 1.0
+    assert body["fidelity_attempts"] >= 1
     resp = client.get(f"/api/v1/files/{job_id}/render")
     assert resp.status_code == 200
+
+
+def test_fidelity_gate_retries_until_max_attempts(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from app.adapters.openrouter import OpenRouterRenderAdapter
+
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
+    monkeypatch.setattr(settings, "FIDELITY_MIN_SCORE", 0.99)
+    monkeypatch.setattr(settings, "FIDELITY_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(
+        OpenRouterRenderAdapter, "generate", lambda self, *a: b"fake-png-bytes"
+    )
+    job_id = _upload(client, _png_bytes()).json()["id"]
+    assert client.post(f"/api/v1/renders/{job_id}/generate").status_code == 202
+    body = {}
+    for _ in range(100):
+        body = client.get(f"/api/v1/renders/{job_id}").json()
+        if body["status"] == "succeeded":
+            break
+        time.sleep(0.05)
+    assert body["status"] == "succeeded"
+    assert body["fidelity_attempts"] == 3
+    assert body["fidelity_score"] == pytest.approx(0.0)

@@ -71,7 +71,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
         if (err.status === 503) {
           setNotice({
             kind: "warn",
-            text: "Render provider not configured — set GEMINI_API_KEY on the API server and retry.",
+            text: "Render provider not configured — set OPENROUTER_API_KEY or GEMINI_API_KEY on the API server and retry.",
           });
         } else if (err.status === 409) {
           setNotice({
@@ -182,6 +182,22 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
         <span className="text-slate-600">
           Style: <strong className="font-semibold capitalize text-slate-900">{detail.style}</strong>
         </span>
+        {detail.fidelity_score !== null && detail.fidelity_score !== undefined && (
+          <span className="text-slate-600">
+            Fidelity:{" "}
+            <strong
+              className={`font-semibold tabular-nums ${
+                detail.fidelity_score >= 0.55 ? "text-emerald-700" : "text-amber-700"
+              }`}
+              title="Edge-recall vs the sketch geometry lock — higher means the design survived rendering"
+            >
+              {Math.round(detail.fidelity_score * 100)}%
+            </strong>{" "}
+            <span className="text-slate-400">
+              ({detail.fidelity_attempts} attempt{detail.fidelity_attempts === 1 ? "" : "s"})
+            </span>
+          </span>
+        )}
         <span className="text-slate-600">
           Created: <time className="tabular-nums text-slate-900">{formatDate(detail.created_at)}</time>
         </span>

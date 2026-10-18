@@ -42,9 +42,11 @@ export interface RenderItem {
   style: Style;
   created_at: string;
   updated_at: string;
+  fidelity_score: number | null;
 }
 
 export interface RenderDetail extends RenderItem {
+  fidelity_attempts: number;
   error: ApiErrorDetail | null;
   artifacts: {
     sketch: string;

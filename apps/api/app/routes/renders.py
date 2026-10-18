@@ -13,6 +13,7 @@ from ..adapters.base import ProviderNotConfigured, RenderAdapter, RenderFailed
 from ..adapters.gemini import GeminiRenderAdapter
 from ..adapters.openrouter import OpenRouterRenderAdapter
 from ..config import settings
+from ..fidelity import FidelityError, fidelity_score
 from ..geometry import GeometryError, extract_edges
 from ..schemas import (
     PRESETS,
@@ -50,12 +51,14 @@ def _job_to_summary(record: dict) -> dict:
         "style": record["style"],
         "created_at": record["created_at"],
         "updated_at": record["updated_at"],
+        "fidelity_score": record.get("fidelity_score"),
     }
 
 
 def _job_to_detail(record: dict) -> dict:
     job_id = record["id"]
     detail = _job_to_summary(record)
+    detail["fidelity_attempts"] = record.get("fidelity_attempts", 0)
     detail["error"] = record.get("error")
     detail["artifacts"] = {
         "sketch": f"/api/v1/files/{job_id}/sketch",
@@ -188,18 +191,41 @@ def _run_generation(job_id: str) -> None:
             job_id, "RENDER_FAILED", "Render provider is no longer configured."
         )
         return
+    sketch_path = jobs.artifact_path(job_id, "sketch")
+    edge_path = jobs.artifact_path(job_id, "edge")
+    best_score = 0.0
+    best_bytes: bytes | None = None
+    attempts = 0
     try:
-        image_bytes = adapter.generate(
-            jobs.artifact_path(job_id, "sketch"),
-            jobs.artifact_path(job_id, "edge"),
-            record["preset"],
-            record["style"],
-        )
+        max_attempts = max(1, settings.FIDELITY_MAX_ATTEMPTS)
+        for _ in range(max_attempts):
+            attempts += 1
+            image_bytes = adapter.generate(
+                sketch_path,
+                edge_path,
+                record["preset"],
+                record["style"],
+            )
+            try:
+                score = fidelity_score(edge_path, image_bytes)
+            except FidelityError:
+                score = 0.0
+            if best_bytes is None or score > best_score:
+                best_score, best_bytes = score, image_bytes
+            if score >= settings.FIDELITY_MIN_SCORE:
+                break
     except (RenderFailed, ProviderNotConfigured) as exc:
         jobs.set_error(job_id, "RENDER_FAILED", str(exc))
         return
-    jobs.artifact_path(job_id, "render").write_bytes(image_bytes)
-    jobs.update(job_id, status=JobStatus.SUCCEEDED.value, error=None)
+    assert best_bytes is not None
+    jobs.artifact_path(job_id, "render").write_bytes(best_bytes)
+    jobs.update(
+        job_id,
+        status=JobStatus.SUCCEEDED.value,
+        error=None,
+        fidelity_score=round(best_score, 4),
+        fidelity_attempts=attempts,
+    )
 
 
 @router.post("/renders/{job_id}/generate", status_code=status.HTTP_202_ACCEPTED)

@@ -121,6 +121,9 @@ export default function GalleryPage() {
                   </p>
                   <p className="text-xs text-slate-500 tabular-nums">
                     Created {formatDate(item.created_at)}
+                    {item.fidelity_score !== null && item.fidelity_score !== undefined && (
+                      <> · Fidelity {Math.round(item.fidelity_score * 100)}%</>
+                    )}
                   </p>
                 </div>
               </Link>

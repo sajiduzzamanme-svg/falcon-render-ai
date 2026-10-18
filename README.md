@@ -34,26 +34,37 @@ live render generation. Never commit real keys.
 
 ### Env vars
 
-| Var            | Default            | Notes                                      |
-| -------------- | ------------------ | ------------------------------------------ |
-| GEMINI_API_KEY | `""`               | Render provider key; empty → 503 on generate |
-| API_HOST       | `127.0.0.1`        |                                            |
-| API_PORT       | `8000`             |                                            |
-| STORAGE_DIR    | `<repo>/storage`   | Jobs + artifacts (`sketch.png`, `edge.png`, `render.png`) |
-| MAX_UPLOAD_MB  | `10`               | Upload size cap                            |
+| Var                  | Default                            | Notes                                      |
+| -------------------- | ---------------------------------- | ------------------------------------------ |
+| GEMINI_API_KEY       | `""`                               | Render provider key; empty → 503 on generate |
+| OPENROUTER_API_KEY   | `""`                               | Preferred when set (via `OPENROUTER_MODEL`, default `google/gemini-2.5-flash-image`); falls back to `GEMINI_API_KEY` |
+| FIDELITY_MIN_SCORE   | `0.0`                              | Fidelity gate: retry while edge-recall < this; `0.0` = gate off (score still recorded). Calibrate from real renders (faithful ~0.66, drifted ~0.45; start near 0.55) |
+| FIDELITY_MAX_ATTEMPTS | `3`                               | Max provider calls per generate; best-scoring attempt is kept |
+| API_HOST             | `127.0.0.1`                        |                                            |
+| API_PORT             | `8000`                             |                                            |
+| STORAGE_DIR          | `<repo>/storage`                   | Jobs + artifacts (`sketch.png`, `edge.png`, `render.png`) |
+| MAX_UPLOAD_MB        | `10`                               | Upload size cap                            |
 
 ### API
 
 | Method | Path                          | Description                                        |
 | ------ | ----------------------------- | -------------------------------------------------- |
-| GET    | `/api/v1/health`              | Health; `render_provider`: `gemini`/`unconfigured` |
+| GET    | `/api/v1/health`              | Health; `render_provider`: `gemini`/`openrouter`/`unconfigured` |
 | POST   | `/api/v1/renders`             | Multipart upload: `file` (png/jpg/jpeg/webp ≤10MB), `preset` (daylight\|dusk\|night), `style` (modern\|minimalist\|warm) → 201 |
-| GET    | `/api/v1/renders`             | List jobs, newest first                            |
-| GET    | `/api/v1/renders/{id}`        | Job detail incl. artifact URLs                     |
-| POST   | `/api/v1/renders/{id}/generate` | Start generation (background thread) → 202; 503 without `GEMINI_API_KEY`; 409 if already processing/succeeded |
-| GET    | `/api/v1/files/{id}/{kind}`   | `kind` = sketch\|edge\|render → image bytes; 404 `ARTIFACT_NOT_FOUND` when missing |
+| GET    | `/api/v1/renders`             | List jobs, newest first (incl. `fidelity_score`) |
+| GET    | `/api/v1/renders/{id}`        | Job detail incl. artifact URLs, `fidelity_score`, `fidelity_attempts` |
+| POST   | `/api/v1/renders/{id}/generate` | Start generation (background thread) → 202; 503 without provider key; 409 if already processing/succeeded. Scores every attempt against the sketch edge map and keeps the best |
 
 Errors always use the envelope `{"error": {"code": "...", "message": "..."}}`.
+
+### Fidelity scoring
+
+Every generated render is scored against the sketch's geometry lock
+(edge recall, 0.0–1.0: what fraction of the sketch's structural edges
+survived rendering). The score and attempt count are stored on the job and
+shown in the UI. When `FIDELITY_MIN_SCORE > 0`, generation retries (up to
+`FIDELITY_MAX_ATTEMPTS`) until the score passes the gate — the best attempt
+is always kept, so a low score never wastes the job.
 
 ### Tests
 

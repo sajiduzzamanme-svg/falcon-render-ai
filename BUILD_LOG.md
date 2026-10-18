@@ -53,3 +53,9 @@ Frontend (commit e7f9885):
 
 Regressions fixed during verification: none (workers' code passed as-is).
 Test artifacts cleaned; storage/ empty; no secrets committed (secret scan: clean).
+
+## 2026-10-18 — OpenRouter adapter live-verified
+- Added `app/adapters/openrouter.py` (Nano Banana via OpenRouter chat completions, sketch+edge as image inputs, fidelity prompt); provider auto-selection prefers OpenRouter, falls back to direct Gemini.
+- Fixed env-specific httpx crash (NO_PROXY `*[::1]` entries break env-proxy mount parsing) via `app/adapters/http.py`: trust_env=False + explicit proxy + system CA bundle (egress TLS interception).
+- Live E2E with real key (transient, never stored): health 200 (provider=openrouter) → upload 201 → generate 202 → succeeded; 1.3MB render downloaded and visually confirmed geometry-faithful to the input massing.
+- Tests: 20/20 pass, ruff clean.

@@ -59,6 +59,8 @@ class RenderJobResponse(BaseModel):
     updated_at: datetime
     error: ErrorDetail | None = None
     artifacts: Artifacts
+    fidelity_score: float | None = None
+    fidelity_attempts: int = 0
 
 
 class RenderJobSummary(BaseModel):
@@ -68,6 +70,7 @@ class RenderJobSummary(BaseModel):
     style: str
     created_at: datetime
     updated_at: datetime
+    fidelity_score: float | None = None
 
 
 class RenderListResponse(BaseModel):

@@ -38,6 +38,8 @@ def create(preset: str, style: str) -> dict:
         "created_at": _now(),
         "updated_at": _now(),
         "error": None,
+        "fidelity_score": None,
+        "fidelity_attempts": 0,
     }
     with _lock:
         _job_dir(job_id).mkdir(parents=True, exist_ok=True)
