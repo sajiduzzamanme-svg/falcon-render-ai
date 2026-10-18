@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+apps/api/.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+
+# Env & secrets
+.env
+!.env.example
+
+# Runtime storage (local job artifacts)
+storage/
+!/storage/.gitkeep
+
+# OS
+.DS_Store
