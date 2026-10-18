@@ -36,6 +36,12 @@ export default function RootLayout({
               >
                 Gallery
               </Link>
+              <Link
+                href="/pricing"
+                className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                Pricing
+              </Link>
             </nav>
           </div>
         </header>
