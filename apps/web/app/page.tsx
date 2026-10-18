@@ -1,520 +1,201 @@
-"use client";
+import Link from "next/link";
+import CompareSlider from "./components/compare-slider";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ApiError,
-  createRender,
-  getHealth,
-  getRender,
-  type Preset,
-  type RenderDetail,
-  type Style,
-} from "@/lib/api";
-import RenderJob from "./components/render-job";
-
-const MAX_BYTES = 10 * 1024 * 1024;
-const ACCEPTED_MIMES = ["image/png", "image/jpeg", "image/webp"];
-const ACCEPTED_EXTS = ["png", "jpg", "jpeg", "webp"];
-const ACCEPT_ATTR = ".png,.jpg,.jpeg,.webp";
-
-const PRESETS: { value: Preset; label: string; swatch: string; hint: string }[] = [
+const STEPS = [
   {
-    value: "daylight",
-    label: "Daylight",
-    swatch: "linear-gradient(135deg,#7dd3fc 0%,#e0f2fe 60%,#fefce8 100%)",
-    hint: "Bright natural light",
+    n: "1",
+    title: "Upload your sketch",
+    text: "Drop a 3D model view, floor plan, or massing. Add a style reference for materials and mood — optional.",
   },
   {
-    value: "dusk",
-    label: "Dusk",
-    swatch: "linear-gradient(135deg,#312e81 0%,#c2410c 70%,#fbbf24 100%)",
-    hint: "Golden hour, lights on",
+    n: "2",
+    title: "Choose the look",
+    text: "Pick lighting (Daylight, Dusk, Night) and style (Modern, Minimalist, Warm) on visual cards.",
   },
   {
-    value: "night",
-    label: "Night",
-    swatch: "linear-gradient(135deg,#020617 0%,#1e3a8a 80%,#3b82f6 100%)",
-    hint: "Artificial lighting",
+    n: "3",
+    title: "Generate & download",
+    text: "Get a photorealistic render locked to your geometry, with a fidelity score proving it.",
   },
 ];
 
-const STYLES: { value: Style; label: string; swatch: string; hint: string }[] = [
+const EXAMPLES = [
   {
-    value: "modern",
-    label: "Modern",
-    swatch: "linear-gradient(135deg,#e2e8f0 0%,#94a3b8 100%)",
-    hint: "Clean lines",
+    src: "/demo/render.webp",
+    alt: "Twin residential towers rendered in red brick",
+    caption: "Sketch → brick residential towers",
   },
   {
-    value: "minimalist",
-    label: "Minimalist",
-    swatch: "linear-gradient(135deg,#ffffff 0%,#f1f5f9 100%)",
-    hint: "White surfaces",
+    src: "/demo/ex1.webp",
+    alt: "Three-storey apartment building in daylight",
+    caption: "Massing model → daylight render",
   },
   {
-    value: "warm",
-    label: "Warm",
-    swatch: "linear-gradient(135deg,#fbbf24 0%,#b45309 100%)",
-    hint: "Wood accents",
+    src: "/demo/ex2.webp",
+    alt: "Apartment building at dusk with warm interior lights",
+    caption: "Same design → dusk mood",
   },
 ];
 
-function validateFile(file: File): string | null {
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  const typeOk =
-    ACCEPTED_MIMES.includes(file.type) || ACCEPTED_EXTS.includes(ext);
-  if (!typeOk) {
-    return "Only PNG, JPG, or WebP images are accepted.";
-  }
-  if (file.size > MAX_BYTES) {
-    return `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`;
-  }
-  return null;
-}
+const PLANS = [
+  { name: "Starter", price: "$9.99", detail: "1,000 credits · 100 renders" },
+  { name: "Growth", price: "$29.99", detail: "3,000 credits · 300 renders" },
+  { name: "Studio", price: "$59.99", detail: "6,000 credits · 600 renders" },
+];
 
-type HealthState = "checking" | "ok" | "down";
-
-function Dropzone({
-  id,
-  title,
-  description,
-  required,
-  file,
-  previewUrl,
-  error,
-  dragging,
-  onPick,
-  onDragState,
-  inputRef,
-}: {
-  id: string;
-  title: string;
-  description: string;
-  required: boolean;
-  file: File | null;
-  previewUrl: string | null;
-  error: string | null;
-  dragging: boolean;
-  onPick: (f: File | null) => void;
-  onDragState: (d: boolean) => void;
-  inputRef: { current: HTMLInputElement | null };
-}) {
+export default function LandingPage() {
   return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">
-          {title}{" "}
-          <span
-            className={`ml-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-              required
-                ? "bg-blue-100 text-blue-800"
-                : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            {required ? "Required" : "Optional"}
-          </span>
-        </h3>
-      </div>
-      <p className="mt-1 text-xs text-slate-500">{description}</p>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={`${title}: drag and drop, or press Enter to browse`}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          onDragState(true);
-        }}
-        onDragLeave={() => onDragState(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          onDragState(false);
-          onPick(e.dataTransfer.files?.[0] ?? null);
-        }}
-        className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-          dragging
-            ? "border-blue-500 bg-blue-50"
-            : "border-slate-300 bg-slate-50 hover:border-slate-400"
-        }`}
-      >
-        <input
-          ref={inputRef}
-          id={id}
-          type="file"
-          accept={ACCEPT_ATTR}
-          aria-label={title}
-          className="sr-only"
-          onChange={(e) => {
-            onPick(e.target.files?.[0] ?? null);
-            e.target.value = "";
-          }}
-        />
-        {previewUrl && file ? (
-          <img
-            src={previewUrl}
-            alt={`Preview of ${title}`}
-            className="max-h-44 rounded-lg object-contain"
-          />
-        ) : (
-          <>
-            <p className="text-sm font-medium text-slate-700">
-              Drop image here, or click to browse
-            </p>
-            <p className="mt-1 text-xs text-slate-500 tabular-nums">
-              PNG, JPG, WebP — up to 10 MB
-            </p>
-          </>
-        )}
-      </div>
-      {error && (
-        <p role="alert" className="mt-2 text-sm font-medium text-red-700">
-          {error}
-        </p>
-      )}
-      {file && !error && (
-        <p className="mt-2 text-xs text-slate-600">
-          <span className="font-medium">{file.name}</span>{" "}
-          <span className="tabular-nums">
-            ({(file.size / 1024 / 1024).toFixed(2)} MB)
-          </span>{" "}
-          <button
-            type="button"
-            onClick={() => onPick(null)}
-            className="ml-1 font-medium text-blue-700 hover:underline"
-          >
-            Remove
-          </button>
-        </p>
-      )}
-    </div>
-  );
-}
-
-export default function StudioPage() {
-  const [health, setHealth] = useState<HealthState>("checking");
-  const [sketch, setSketch] = useState<File | null>(null);
-  const [sketchPreview, setSketchPreview] = useState<string | null>(null);
-  const [sketchError, setSketchError] = useState<string | null>(null);
-  const [sketchDrag, setSketchDrag] = useState(false);
-  const [reference, setReference] = useState<File | null>(null);
-  const [refPreview, setRefPreview] = useState<string | null>(null);
-  const [refError, setRefError] = useState<string | null>(null);
-  const [refDrag, setRefDrag] = useState(false);
-  const [preset, setPreset] = useState<Preset>("daylight");
-  const [style, setStyle] = useState<Style>("modern");
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [job, setJob] = useState<RenderDetail | null>(null);
-  const sketchInputRef = useRef<HTMLInputElement>(null);
-  const refInputRef = useRef<HTMLInputElement>(null);
-
-  const checkHealth = useCallback(async () => {
-    setHealth("checking");
-    try {
-      await getHealth();
-      setHealth("ok");
-    } catch {
-      setHealth("down");
-    }
-  }, []);
-
-  useEffect(() => {
-    void checkHealth();
-  }, [checkHealth]);
-
-  useEffect(() => {
-    return () => {
-      if (sketchPreview) URL.revokeObjectURL(sketchPreview);
-      if (refPreview) URL.revokeObjectURL(refPreview);
-    };
-  }, [sketchPreview, refPreview]);
-
-  const pickSketch = useCallback(
-    (candidate: File | null) => {
-      if (sketchPreview) URL.revokeObjectURL(sketchPreview);
-      setSketchPreview(null);
-      setSketch(null);
-      setSketchError(null);
-      if (!candidate) return;
-      const problem = validateFile(candidate);
-      if (problem) {
-        setSketchError(problem);
-        return;
-      }
-      setSketch(candidate);
-      setSketchPreview(URL.createObjectURL(candidate));
-    },
-    [sketchPreview],
-  );
-
-  const pickReference = useCallback(
-    (candidate: File | null) => {
-      if (refPreview) URL.revokeObjectURL(refPreview);
-      setRefPreview(null);
-      setReference(null);
-      setRefError(null);
-      if (!candidate) return;
-      const problem = validateFile(candidate);
-      if (problem) {
-        setRefError(problem);
-        return;
-      }
-      setReference(candidate);
-      setRefPreview(URL.createObjectURL(candidate));
-    },
-    [refPreview],
-  );
-
-  const handleUpload = async () => {
-    if (!sketch) return;
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const created = await createRender(sketch, preset, style, reference);
-      const detail = await getRender(created.id);
-      setJob(detail);
-      // Scroll to the result once it renders.
-      requestAnimationFrame(() => {
-        document
-          .getElementById("studio-result")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setUploadError(err.message);
-      } else {
-        setUploadError("Could not reach the API server.");
-      }
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const canUpload = sketch !== null && !uploading && !sketchError;
-
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-16">
+      {/* Hero */}
+      <section className="grid items-center gap-10 lg:grid-cols-2">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Studio</h1>
-          <p className="mt-1 text-slate-600">
-            Geometry-locked architectural renders — your design, never
-            re-imagined.
+          <p className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-800">
+            Geometry-locked rendering
+          </p>
+          <h1 className="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
+            Renders that never re-imagine your design
+          </h1>
+          <p className="mt-4 text-lg text-slate-600">
+            Upload your sketch. Falcon Render AI extracts its geometry lock and
+            renders it photorealistically —{" "}
+            <strong className="font-semibold text-slate-900">
+              walls, windows, and massing stay exactly where you put them.
+            </strong>
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href="/studio"
+              className="rounded-lg bg-blue-600 px-7 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            >
+              Try 1 render free
+            </Link>
+            <Link
+              href="/pricing"
+              className="rounded-lg border border-slate-300 bg-white px-7 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            >
+              See pricing
+            </Link>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            No signup needed to preview · 1 render = 10 credits
           </p>
         </div>
-        <div aria-live="polite">
-          {health === "ok" && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-800 ring-1 ring-inset ring-emerald-300">
-              <span
-                className="h-2 w-2 rounded-full bg-emerald-500"
-                aria-hidden="true"
-              />
-              API connected
-            </span>
-          )}
-          {health === "down" && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1.5 text-sm font-medium text-red-800 ring-1 ring-inset ring-red-300">
-              <span
-                className="h-2 w-2 rounded-full bg-red-500"
-                aria-hidden="true"
-              />
-              API unreachable — start the backend
-              <button
-                type="button"
-                onClick={() => void checkHealth()}
-                className="ml-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
-              >
-                Retry
-              </button>
-            </span>
-          )}
-          {health === "checking" && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-inset ring-slate-300">
-              Checking API…
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Step 1 — uploads */}
-      <section
-        aria-label="Step 1: upload images"
-        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <h2 className="text-lg font-semibold">
-          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-            1
-          </span>
-          Upload
-        </h2>
-        <div className="mt-4 grid gap-6 md:grid-cols-2">
-          <Dropzone
-            id="sketch-file"
-            title="Your sketch"
-            description="3D model view, floor plan, or massing. Geometry always comes from here."
-            required
-            file={sketch}
-            previewUrl={sketchPreview}
-            error={sketchError}
-            dragging={sketchDrag}
-            onPick={pickSketch}
-            onDragState={setSketchDrag}
-            inputRef={sketchInputRef}
+        <div>
+          <CompareSlider
+            beforeSrc="/demo/sketch.jpg"
+            afterSrc="/demo/render.webp"
+            beforeLabel="Your sketch"
+            afterLabel="Falcon render"
           />
-          <Dropzone
-            id="reference-file"
-            title="Style reference"
-            description="Materials, colors, mood. Never geometry — your design stays locked."
-            required={false}
-            file={reference}
-            previewUrl={refPreview}
-            error={refError}
-            dragging={refDrag}
-            onPick={pickReference}
-            onDragState={setRefDrag}
-            inputRef={refInputRef}
-          />
+          <p className="mt-2 text-center text-xs text-slate-500">
+            Drag the handle — same geometry, photorealistic finish
+          </p>
         </div>
       </section>
 
-      {/* Step 2 — look */}
-      <section
-        aria-label="Step 2: choose the look"
-        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <h2 className="text-lg font-semibold">
-          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-            2
-          </span>
-          Choose the look
+      {/* How it works */}
+      <section aria-label="How it works">
+        <h2 className="text-center text-2xl font-bold tracking-tight">
+          From sketch to render in three steps
         </h2>
-
-        <fieldset className="mt-4">
-          <legend className="text-sm font-semibold text-slate-900">
-            Lighting
-          </legend>
-          <div
-            role="radiogroup"
-            aria-label="Lighting preset"
-            className="mt-2 grid grid-cols-3 gap-3"
-          >
-            {PRESETS.map((p) => (
-              <label
-                key={p.value}
-                className={`cursor-pointer overflow-hidden rounded-xl border-2 transition-all focus-within:ring-2 focus-within:ring-blue-500 ${
-                  preset === p.value
-                    ? "border-blue-600 shadow-md"
-                    : "border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="preset"
-                  value={p.value}
-                  checked={preset === p.value}
-                  onChange={() => setPreset(p.value)}
-                  className="sr-only"
-                />
-                <div className="h-16 w-full" style={{ background: p.swatch }} />
-                <div className="px-3 py-2">
-                  <p className="text-sm font-semibold text-slate-900">
-                    {p.label}
-                  </p>
-                  <p className="text-xs text-slate-500">{p.hint}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset className="mt-6">
-          <legend className="text-sm font-semibold text-slate-900">
-            Design style
-          </legend>
-          <div
-            role="radiogroup"
-            aria-label="Design style"
-            className="mt-2 grid grid-cols-3 gap-3"
-          >
-            {STYLES.map((s) => (
-              <label
-                key={s.value}
-                className={`cursor-pointer overflow-hidden rounded-xl border-2 transition-all focus-within:ring-2 focus-within:ring-blue-500 ${
-                  style === s.value
-                    ? "border-blue-600 shadow-md"
-                    : "border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="style"
-                  value={s.value}
-                  checked={style === s.value}
-                  onChange={() => setStyle(s.value)}
-                  className="sr-only"
-                />
-                <div className="h-16 w-full" style={{ background: s.swatch }} />
-                <div className="px-3 py-2">
-                  <p className="text-sm font-semibold text-slate-900">
-                    {s.label}
-                  </p>
-                  <p className="text-xs text-slate-500">{s.hint}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {STEPS.map((s) => (
+            <div
+              key={s.n}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            >
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                {s.n}
+              </span>
+              <h3 className="mt-3 font-semibold">{s.title}</h3>
+              <p className="mt-1 text-sm text-slate-600">{s.text}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
-      {/* Step 3 — generate */}
+      {/* Examples */}
+      <section aria-label="Example renders">
+        <div className="flex items-end justify-between">
+          <h2 className="text-2xl font-bold tracking-tight">
+            Real sketches, real renders
+          </h2>
+          <Link
+            href="/renders"
+            className="text-sm font-semibold text-blue-700 hover:underline"
+          >
+            Open gallery →
+          </Link>
+        </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {EXAMPLES.map((ex) => (
+            <figure
+              key={ex.src}
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <img
+                src={ex.src}
+                alt={ex.alt}
+                loading="lazy"
+                className="aspect-[4/3] w-full object-cover"
+              />
+              <figcaption className="px-4 py-3 text-sm text-slate-600">
+                {ex.caption}
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+
+      {/* Pricing teaser */}
       <section
-        aria-label="Step 3: generate"
-        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+        aria-label="Pricing"
+        className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"
       >
-        <h2 className="text-lg font-semibold">
-          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-            3
-          </span>
-          Generate
+        <h2 className="text-2xl font-bold tracking-tight">
+          Simple credit pricing
         </h2>
-        {uploadError && (
-          <div
-            role="alert"
-            className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-900"
-          >
-            {uploadError}
-          </div>
-        )}
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => void handleUpload()}
-            disabled={!canUpload}
-            aria-disabled={!canUpload}
-            title={!sketch ? "Choose your sketch first" : undefined}
-            className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-          >
-            {uploading ? "Uploading…" : "Generate render"}
-          </button>
-          {!sketch && (
-            <p className="mt-2 text-xs text-slate-500">
-              Choose your sketch above to activate.
-            </p>
-          )}
+        <p className="mt-1 text-slate-600">
+          1 render = 10 credits · credits never expire
+        </p>
+        <div className="mx-auto mt-6 grid max-w-2xl gap-4 sm:grid-cols-3">
+          {PLANS.map((p) => (
+            <div
+              key={p.name}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-5"
+            >
+              <p className="text-sm font-semibold text-slate-500">{p.name}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">{p.price}</p>
+              <p className="mt-1 text-xs text-slate-500 tabular-nums">
+                {p.detail}
+              </p>
+            </div>
+          ))}
         </div>
+        <Link
+          href="/pricing"
+          className="mt-6 inline-block rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+        >
+          See full pricing
+        </Link>
       </section>
 
-      {job && (
-        <div id="studio-result" aria-live="polite" className="scroll-mt-4">
-          <RenderJob key={job.id} initial={job} />
-        </div>
-      )}
+      {/* Final CTA */}
+      <section className="rounded-2xl bg-blue-600 px-8 py-12 text-center shadow-sm">
+        <h2 className="text-2xl font-bold tracking-tight text-white">
+          Your design deserves a faithful render
+        </h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-blue-100">
+          Join architects who stopped fighting AI re-imagination. First render
+          is free.
+        </p>
+        <Link
+          href="/studio"
+          className="mt-6 inline-block rounded-lg bg-white px-8 py-3 text-sm font-semibold text-blue-700 shadow hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600"
+        >
+          Start rendering free
+        </Link>
+      </section>
     </div>
   );
 }
