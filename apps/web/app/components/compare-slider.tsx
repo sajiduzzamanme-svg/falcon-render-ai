@@ -59,13 +59,13 @@ export default function CompareSlider({
         src={afterSrc}
         alt={afterLabel}
         draggable={false}
-        className="absolute inset-0 h-full w-full object-contain"
+        className="absolute inset-0 h-full w-full object-cover"
       />
       <img
         src={beforeSrc}
         alt={beforeLabel}
         draggable={false}
-        className="absolute inset-0 h-full w-full object-contain"
+        className="absolute inset-0 h-full w-full object-cover"
         style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
       />
       <div

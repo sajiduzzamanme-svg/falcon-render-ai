@@ -34,6 +34,9 @@ class HealthResponse(BaseModel):
     version: str = "0.1.0"
     geometry: str = "opencv"
     render_provider: Literal["gemini", "openrouter", "unconfigured"]
+    # Deployed git commit (Railway sets RAILWAY_GIT_COMMIT_SHA; local dev
+    # falls back to git rev-parse). Lets us verify which commit is live.
+    commit: str = "unknown"
 
 
 class RenderCreateResponse(BaseModel):

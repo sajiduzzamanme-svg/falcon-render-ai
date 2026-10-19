@@ -188,7 +188,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
           <img
             src={fileUrl(detail.artifacts.sketch)}
             alt="Uploaded architectural sketch"
-            className="aspect-[4/3] w-full object-contain bg-slate-50"
+            className="max-h-[65vh] w-full object-contain bg-slate-50"
           />
           <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Sketch — geometry source
@@ -199,7 +199,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
           <img
             src={fileUrl(detail.artifacts.edge)}
             alt="Edge map extracted from the sketch — the geometry lock"
-            className="aspect-[4/3] w-full object-contain bg-slate-50"
+            className="max-h-[65vh] w-full object-contain bg-slate-50"
           />
           <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Geometry lock — edge map extracted from your sketch
@@ -211,7 +211,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             <img
               src={fileUrl(detail.artifacts.reference)}
               alt="Style reference image — materials and mood only"
-              className="aspect-[4/3] w-full object-contain bg-slate-50"
+              className="max-h-[65vh] w-full object-contain bg-slate-50"
             />
             <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Style reference — materials &amp; mood only
@@ -228,7 +228,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
                   ? "Geometry-locked architectural render"
                   : "Watermarked preview — sign in as the creator to download full resolution"
               }
-              className="aspect-[4/3] w-full object-contain bg-slate-50"
+              className="max-h-[65vh] w-full object-contain bg-slate-50"
             />
           ) : (
             <div

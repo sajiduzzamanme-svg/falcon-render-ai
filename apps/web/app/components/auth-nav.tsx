@@ -9,7 +9,7 @@ const linkCls =
   "rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500";
 
 /** Right side of the header nav: auth-aware links + credit balance. */
-export default function AuthNav() {
+export default function AuthNav({ mobile = false }: { mobile?: boolean }) {
   const { configured, loading, user, session, signOut } = useAuth();
   const [credits, setCredits] = useState<number | null>(null);
 
@@ -33,7 +33,14 @@ export default function AuthNav() {
   }, [configured, user, session]);
 
   return (
-    <nav aria-label="Primary" className="flex items-center gap-1">
+    <nav
+      aria-label="Primary"
+      className={
+        mobile
+          ? "flex flex-col items-stretch gap-1"
+          : "flex items-center gap-1"
+      }
+    >
       <Link href="/studio" className={linkCls}>
         Studio
       </Link>
