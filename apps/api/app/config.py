@@ -7,10 +7,6 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# <repo-root>/storage — app/config.py -> parents[2] is the repo root.
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -26,7 +22,11 @@ class Settings(BaseSettings):
     FIDELITY_MAX_ATTEMPTS: int = 3
     API_HOST: str = "127.0.0.1"
     API_PORT: int = 8000
-    STORAGE_DIR: Path = REPO_ROOT / "storage"
+    # Job artifact storage (sketches, edge maps, renders). Relative to the
+    # process working directory so it resolves to a writable location both
+    # locally (apps/api/) and on Railway (/app). Override with the
+    # STORAGE_DIR env var when a fixed absolute path is needed.
+    STORAGE_DIR: Path = Path("storage")
     MAX_UPLOAD_MB: int = 10
     # Supabase (ADR 0002). When both are set, the Supabase job store +
     # credit ledger are used; otherwise the local JSON store (local dev).
