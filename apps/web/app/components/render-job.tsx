@@ -9,6 +9,7 @@ import {
   fileUrl,
   generateRender,
   getRender,
+  roomTypeLabel,
   type RenderDetail,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -294,7 +295,7 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
           }`}
         >
           {detail.mode === "interior"
-            ? `Interior${detail.room_type ? ` · ${detail.room_type}` : ""}`
+            ? `Interior${detail.room_type ? ` · ${roomTypeLabel(detail.room_type)}` : ""}`
             : "Exterior"}
         </span>
         <span className="text-slate-600">

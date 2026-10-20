@@ -22,7 +22,17 @@ INTERIOR_STYLES: tuple[str, ...] = (
     "luxury",
     "traditional",
 )
-ROOM_TYPES: tuple[str, ...] = ("living", "bedroom", "kitchen", "dining", "office")
+ROOM_TYPES: tuple[str, ...] = (
+    "drawing",
+    "living",
+    "dining",
+    "master_bedroom",
+    "child_bedroom",
+    "bedroom",
+    "kitchen",
+    "bathroom",
+    "office",
+)
 
 
 class JobStatus(str, Enum):

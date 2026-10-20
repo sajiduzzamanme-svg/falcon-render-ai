@@ -15,7 +15,22 @@ export type InteriorStyle =
   | "minimalist"
   | "luxury"
   | "traditional";
-export type RoomType = "living" | "bedroom" | "kitchen" | "dining" | "office";
+export type RoomType =
+  | "drawing"
+  | "living"
+  | "dining"
+  | "master_bedroom"
+  | "child_bedroom"
+  | "bedroom"
+  | "kitchen"
+  | "bathroom"
+  | "office";
+
+/** Display label for a room type value ("master_bedroom" -> "Master bedroom"). */
+export function roomTypeLabel(rt: string): string {
+  const spaced = rt.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 export type RenderStatus = "queued" | "processing" | "succeeded" | "failed";
 
 export interface ApiErrorDetail {

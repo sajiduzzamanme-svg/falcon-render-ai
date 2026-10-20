@@ -74,10 +74,14 @@ _INTERIOR_STYLE_DIRECTION = {
 }
 
 _ROOM_FURNITURE = {
+    "drawing": "a formal sofa set with center table, elegant curtains, a showpiece/display cabinet, wall art and a ceiling fan or chandelier — a welcoming guest-facing room",
     "living": "a comfortable sofa set, coffee table, rug, TV unit or feature wall, floor/table lamps and indoor plants",
+    "dining": "a dining table with chairs, a crockery cabinet or sideboard, pendant lighting and tasteful table decor",
+    "master_bedroom": "a king-size bed with layered bedding and padded headboard, large wardrobe, dressing table with mirror, bedside tables with lamps, rug and curtains",
+    "child_bedroom": "a child-friendly bed with colorful bedding, a study desk with chair and bookshelf, toy storage, playful wall colors and decor, soft rug — cheerful and safe",
     "bedroom": "a bed with layered bedding and headboard, bedside tables with lamps, a wardrobe or dresser, rug and soft curtains",
-    "kitchen": "cabinets, countertops with appliances, a small dining/breakfast nook if space allows, pendant lights",
-    "dining": "a dining table with chairs, a sideboard, pendant lighting and table decor",
+    "kitchen": "modular cabinets, countertops with sink and cooktop, modern appliances, a small breakfast counter if space allows, pendant lights",
+    "bathroom": "wall and floor tiles, a modern commode, wash basin with vanity and mirror, shower fittings with glass partition if space allows, towel rails and soft lighting — a complete finished bathroom",
     "office": "a desk with chair, shelving or cabinets, task lighting, and minimal professional decor",
 }
 
@@ -88,19 +92,30 @@ def interior_prompt(
     preset: str,
     has_reference: bool = False,
 ) -> str:
-    """Prompt for the interior module: furnish a blank room photo while
-    keeping the room's architecture pixel-faithful (structure lock)."""
+    """Prompt for the interior module: finish + furnish a blank room
+    photo while keeping the room's architecture faithful (structure lock).
+
+    Input photos are often UNDER-CONSTRUCTION rooms (bare brick, raw
+    plaster, unpainted walls, bare floor): the output first completes
+    the construction finish, then furnishes for the selected room type.
+    """
     look = _INTERIOR_STYLE_DIRECTION.get(style, _INTERIOR_STYLE_DIRECTION["modern"])
     furniture = _ROOM_FURNITURE.get(room_type, _ROOM_FURNITURE["living"])
     lighting = _PRESET_LIGHTING.get(preset, _PRESET_LIGHTING["daylight"])
+    room_label = room_type.replace("_", " ")
     prompt = (
-        f"Transform the provided photo of an empty room into a fully "
-        f"furnished, photorealistic {room_type} interior design. "
+        f"Transform the provided photo of a blank room into a fully "
+        f"finished, furnished, photorealistic {room_label} interior design. "
+        "The photo may show an UNDER-CONSTRUCTION room — bare brick, raw "
+        "plaster, unpainted walls, bare concrete floor. In that case first "
+        "complete the construction finish in the result: smooth plastered "
+        "and painted walls, a finished ceiling, and proper flooring "
+        "(tiles, marble or polished wood as fits the style). "
         "STRICT RULE: keep the room's architecture exactly unchanged — "
-        "same walls, ceiling, floor, windows, doors, and the exact same "
-        "camera viewpoint and perspective as the photo and its edge map. "
-        "Do not move, add, or remove any structural element. Only add "
-        f"furniture and decor: {furniture}. Style: {look}. "
+        "same wall positions, ceiling height, windows, doors, columns and "
+        "the exact same camera viewpoint and perspective as the photo and "
+        "its edge map. Do not move, add, or remove any structural element. "
+        f"Then furnish it as a {room_label}: {furniture}. Style: {look}. "
         f"Lighting mood: {lighting}. Photorealistic, interior-magazine "
         "quality, realistic shadows and materials."
     )

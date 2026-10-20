@@ -431,3 +431,23 @@ def test_interior_prompt_keeps_structure() -> None:
     assert "kitchen" in text
     assert "exactly unchanged" in text
     assert "marble" in text  # luxury direction
+
+
+def test_interior_bd_room_types_accepted(client: TestClient) -> None:
+    for rt in ("drawing", "master_bedroom", "child_bedroom", "bathroom"):
+        resp = _upload_interior(client, _png_bytes(), room_type=rt)
+        assert resp.status_code == 201, rt
+        assert resp.json()["room_type"] == rt
+
+
+def test_interior_prompt_under_construction() -> None:
+    from app.adapters.gemini import interior_prompt
+
+    text = interior_prompt("bathroom", "modern", "daylight")
+    assert "UNDER-CONSTRUCTION" in text
+    assert "commode" in text  # bathroom program
+    text = interior_prompt("master_bedroom", "modern", "daylight")
+    assert "master bedroom" in text
+    assert "king-size bed" in text
+    text = interior_prompt("child_bedroom", "modern", "daylight")
+    assert "study desk" in text

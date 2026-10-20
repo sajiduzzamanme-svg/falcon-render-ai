@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ApiError, fileUrl, listRenders, type RenderItem } from "@/lib/api";
+import {
+  ApiError,
+  fileUrl,
+  listRenders,
+  roomTypeLabel,
+  type RenderItem,
+} from "@/lib/api";
 import StatusBadge from "../components/status-badge";
 
 function formatDate(value: string): string {
@@ -128,7 +134,7 @@ export default function GalleryPage() {
                       }`}
                     >
                       {item.mode === "interior"
-                        ? `Interior${item.room_type ? ` · ${item.room_type}` : ""}`
+                        ? `Interior${item.room_type ? ` · ${roomTypeLabel(item.room_type)}` : ""}`
                         : "Exterior"}
                     </span>
                   </div>

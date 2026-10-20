@@ -102,10 +102,14 @@ const INTERIOR_STYLES: {
 ];
 
 const ROOM_TYPES: { value: RoomType; label: string }[] = [
+  { value: "drawing", label: "Drawing room" },
   { value: "living", label: "Living room" },
+  { value: "dining", label: "Dining" },
+  { value: "master_bedroom", label: "Master bedroom" },
+  { value: "child_bedroom", label: "Child bedroom" },
   { value: "bedroom", label: "Bedroom" },
   { value: "kitchen", label: "Kitchen" },
-  { value: "dining", label: "Dining" },
+  { value: "bathroom", label: "Bathroom" },
   { value: "office", label: "Office" },
 ];
 
@@ -368,7 +372,7 @@ export default function StudioPage() {
           <h1 className="text-3xl font-bold tracking-tight">Studio</h1>
           <p className="mt-1 text-slate-600">
             {mode === "interior"
-              ? "Upload a blank room — get a fully furnished interior design. Room structure stays locked."
+              ? "Finished or under-construction room photo — get a complete interior design. Structure stays locked."
               : "Geometry-locked architectural renders — your design, never re-imagined."}
           </p>
         </div>
@@ -462,10 +466,10 @@ export default function StudioPage() {
         <div className="mt-4 grid gap-6 md:grid-cols-2">
           <Dropzone
             id="sketch-file"
-            title={mode === "interior" ? "Your blank room photo" : "Your sketch"}
+            title={mode === "interior" ? "Your room photo" : "Your sketch"}
             description={
               mode === "interior"
-                ? "A photo of the empty room. Walls, windows and viewpoint stay exactly as they are."
+                ? "Finished or under-construction — bare brick and plaster are fine. Walls, windows and viewpoint stay exactly as they are."
                 : "3D model view, floor plan, or massing. Geometry always comes from here."
             }
             required
