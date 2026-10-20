@@ -6,8 +6,11 @@ import {
   createRender,
   getHealth,
   getRender,
+  type InteriorStyle,
+  type Mode,
   type Preset,
   type RenderDetail,
+  type RoomType,
   type Style,
 } from "@/lib/api";
 import RenderJob from "../components/render-job";
@@ -58,6 +61,52 @@ const STYLES: { value: Style; label: string; swatch: string; hint: string }[] = 
     swatch: "linear-gradient(135deg,#fbbf24 0%,#b45309 100%)",
     hint: "Wood accents",
   },
+];
+
+const INTERIOR_STYLES: {
+  value: InteriorStyle;
+  label: string;
+  swatch: string;
+  hint: string;
+}[] = [
+  {
+    value: "modern",
+    label: "Modern",
+    swatch: "linear-gradient(135deg,#e2e8f0 0%,#64748b 100%)",
+    hint: "Clean lines, neutral tones",
+  },
+  {
+    value: "scandinavian",
+    label: "Scandinavian",
+    swatch: "linear-gradient(135deg,#fef3c7 0%,#d6d3d1 100%)",
+    hint: "Light wood, cozy hygge",
+  },
+  {
+    value: "minimalist",
+    label: "Minimalist",
+    swatch: "linear-gradient(135deg,#ffffff 0%,#f1f5f9 100%)",
+    hint: "Few pieces, calm space",
+  },
+  {
+    value: "luxury",
+    label: "Luxury",
+    swatch: "linear-gradient(135deg,#fbbf24 0%,#78350f 100%)",
+    hint: "Marble, brass, velvet",
+  },
+  {
+    value: "traditional",
+    label: "Traditional",
+    swatch: "linear-gradient(135deg,#fdba74 0%,#9a3412 100%)",
+    hint: "Classic wood, warm colors",
+  },
+];
+
+const ROOM_TYPES: { value: RoomType; label: string }[] = [
+  { value: "living", label: "Living room" },
+  { value: "bedroom", label: "Bedroom" },
+  { value: "kitchen", label: "Kitchen" },
+  { value: "dining", label: "Dining" },
+  { value: "office", label: "Office" },
 ];
 
 function validateFile(file: File): string | null {
@@ -208,8 +257,11 @@ export default function StudioPage() {
   const [refPreview, setRefPreview] = useState<string | null>(null);
   const [refError, setRefError] = useState<string | null>(null);
   const [refDrag, setRefDrag] = useState(false);
+  const [mode, setMode] = useState<Mode>("exterior");
   const [preset, setPreset] = useState<Preset>("daylight");
   const [style, setStyle] = useState<Style>("modern");
+  const [interiorStyle, setInteriorStyle] = useState<InteriorStyle>("modern");
+  const [roomType, setRoomType] = useState<RoomType>("living");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [job, setJob] = useState<RenderDetail | null>(null);
@@ -279,7 +331,15 @@ export default function StudioPage() {
     setUploadError(null);
     try {
       const token = session?.access_token;
-      const created = await createRender(sketch, preset, style, reference, token);
+      const created = await createRender(
+        sketch,
+        preset,
+        mode === "interior" ? interiorStyle : style,
+        reference,
+        token,
+        mode,
+        mode === "interior" ? roomType : null,
+      );
       const detail = await getRender(created.id, token);
       setJob(detail);
       // Scroll to the result once it renders.
@@ -307,8 +367,9 @@ export default function StudioPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Studio</h1>
           <p className="mt-1 text-slate-600">
-            Geometry-locked architectural renders — your design, never
-            re-imagined.
+            {mode === "interior"
+              ? "Upload a blank room — get a fully furnished interior design. Room structure stays locked."
+              : "Geometry-locked architectural renders — your design, never re-imagined."}
           </p>
         </div>
         <div aria-live="polite">
@@ -345,6 +406,48 @@ export default function StudioPage() {
         </div>
       </div>
 
+      {/* Mode toggle */}
+      <div
+        role="radiogroup"
+        aria-label="What do you want to create?"
+        className="grid grid-cols-2 gap-3"
+      >
+        {(
+          [
+            {
+              value: "exterior",
+              title: "Exterior Render",
+              hint: "Sketch → photoreal building",
+            },
+            {
+              value: "interior",
+              title: "Interior Design",
+              hint: "Blank room → furnished design",
+            },
+          ] as const
+        ).map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            role="radio"
+            aria-checked={mode === m.value}
+            onClick={() => setMode(m.value)}
+            className={`rounded-2xl border-2 px-4 py-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+              mode === m.value
+                ? "border-blue-600 bg-blue-50 shadow-sm"
+                : "border-slate-200 bg-white hover:border-slate-300"
+            }`}
+          >
+            <span className="block text-sm font-bold text-slate-900 sm:text-base">
+              {m.title}
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              {m.hint}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Step 1 — uploads */}
       <section
         aria-label="Step 1: upload images"
@@ -359,8 +462,12 @@ export default function StudioPage() {
         <div className="mt-4 grid gap-6 md:grid-cols-2">
           <Dropzone
             id="sketch-file"
-            title="Your sketch"
-            description="3D model view, floor plan, or massing. Geometry always comes from here."
+            title={mode === "interior" ? "Your blank room photo" : "Your sketch"}
+            description={
+              mode === "interior"
+                ? "A photo of the empty room. Walls, windows and viewpoint stay exactly as they are."
+                : "3D model view, floor plan, or massing. Geometry always comes from here."
+            }
             required
             file={sketch}
             previewUrl={sketchPreview}
@@ -373,7 +480,11 @@ export default function StudioPage() {
           <Dropzone
             id="reference-file"
             title="Style reference"
-            description="Materials, colors, mood. Never geometry — your design stays locked."
+            description={
+              mode === "interior"
+                ? "A room you love — palette, materials, mood. Never its layout."
+                : "Materials, colors, mood. Never geometry — your design stays locked."
+            }
             required={false}
             file={reference}
             previewUrl={refPreview}
@@ -436,6 +547,36 @@ export default function StudioPage() {
           </div>
         </fieldset>
 
+        {mode === "interior" && (
+          <fieldset className="mt-6">
+            <legend className="text-sm font-semibold text-slate-900">
+              Room type
+            </legend>
+            <div
+              role="radiogroup"
+              aria-label="Room type"
+              className="mt-2 flex flex-wrap gap-2"
+            >
+              {ROOM_TYPES.map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={roomType === r.value}
+                  onClick={() => setRoomType(r.value)}
+                  className={`rounded-full border-2 px-4 py-2 text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    roomType === r.value
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
         <fieldset className="mt-6">
           <legend className="text-sm font-semibold text-slate-900">
             Design style
@@ -445,11 +586,11 @@ export default function StudioPage() {
             aria-label="Design style"
             className="mt-2 grid grid-cols-3 gap-3"
           >
-            {STYLES.map((s) => (
+            {(mode === "interior" ? INTERIOR_STYLES : STYLES).map((s) => (
               <label
                 key={s.value}
                 className={`cursor-pointer overflow-hidden rounded-xl border-2 transition-all focus-within:ring-2 focus-within:ring-blue-500 ${
-                  style === s.value
+                  (mode === "interior" ? interiorStyle : style) === s.value
                     ? "border-blue-600 shadow-md"
                     : "border-slate-200 hover:border-slate-300"
                 }`}
@@ -458,8 +599,14 @@ export default function StudioPage() {
                   type="radio"
                   name="style"
                   value={s.value}
-                  checked={style === s.value}
-                  onChange={() => setStyle(s.value)}
+                  checked={
+                    (mode === "interior" ? interiorStyle : style) === s.value
+                  }
+                  onChange={() =>
+                    mode === "interior"
+                      ? setInteriorStyle(s.value as InteriorStyle)
+                      : setStyle(s.value as Style)
+                  }
                   className="sr-only"
                 />
                 <div className="h-16 w-full" style={{ background: s.swatch }} />
@@ -503,11 +650,17 @@ export default function StudioPage() {
             title={!sketch ? "Choose your sketch first" : undefined}
             className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
           >
-            {uploading ? "Uploading…" : "Generate render"}
+            {uploading
+              ? "Uploading…"
+              : mode === "interior"
+                ? "Generate interior design"
+                : "Generate render"}
           </button>
           {!sketch && (
             <p className="mt-2 text-xs text-slate-500">
-              Choose your sketch above to activate.
+              {mode === "interior"
+                ? "Choose your room photo above to activate."
+                : "Choose your sketch above to activate."}
             </p>
           )}
         </div>

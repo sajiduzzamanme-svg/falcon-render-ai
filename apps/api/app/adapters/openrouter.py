@@ -13,7 +13,7 @@ from pathlib import Path
 import httpx
 
 from .base import ProviderNotConfigured, RenderAdapter, RenderFailed
-from .gemini import fidelity_prompt
+from .gemini import fidelity_prompt, interior_prompt
 from .http import http_client
 
 _ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
@@ -36,6 +36,8 @@ class OpenRouterRenderAdapter(RenderAdapter):
         preset: str,
         style: str,
         reference_path: Path | None = None,
+        mode: str = "exterior",
+        room_type: str | None = None,
     ) -> bytes:
         if not self.configured:
             raise ProviderNotConfigured(
@@ -46,13 +48,19 @@ class OpenRouterRenderAdapter(RenderAdapter):
             raw = base64.b64encode(path.read_bytes()).decode("ascii")
             return f"data:image/png;base64,{raw}"
 
+        if mode == "interior":
+            prompt_text = interior_prompt(
+                room_type or "living",
+                style,
+                preset,
+                has_reference=reference_path is not None,
+            )
+        else:
+            prompt_text = fidelity_prompt(
+                preset, style, has_reference=reference_path is not None
+            )
         content: list[dict] = [
-            {
-                "type": "text",
-                "text": fidelity_prompt(
-                    preset, style, has_reference=reference_path is not None
-                ),
-            },
+            {"type": "text", "text": prompt_text},
             {"type": "image_url", "image_url": {"url": _data_url(sketch_path)}},
             {"type": "image_url", "image_url": {"url": _data_url(edge_path)}},
         ]

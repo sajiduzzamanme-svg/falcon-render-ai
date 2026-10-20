@@ -12,6 +12,18 @@ Style = Literal["modern", "minimalist", "warm"]
 PRESETS: tuple[str, ...] = ("daylight", "dusk", "night")
 STYLES: tuple[str, ...] = ("modern", "minimalist", "warm")
 
+# Job modes: exterior sketch->render, or interior blank-room->design.
+Mode = Literal["exterior", "interior"]
+MODES: tuple[str, ...] = ("exterior", "interior")
+INTERIOR_STYLES: tuple[str, ...] = (
+    "modern",
+    "scandinavian",
+    "minimalist",
+    "luxury",
+    "traditional",
+)
+ROOM_TYPES: tuple[str, ...] = ("living", "bedroom", "kitchen", "dining", "office")
+
 
 class JobStatus(str, Enum):
     QUEUED = "queued"
@@ -44,6 +56,8 @@ class RenderCreateResponse(BaseModel):
     status: JobStatus
     preset: str
     style: str
+    mode: str = "exterior"
+    room_type: str | None = None
     created_at: datetime
 
 
@@ -60,6 +74,8 @@ class RenderJobResponse(BaseModel):
     status: JobStatus
     preset: str
     style: str
+    mode: str = "exterior"
+    room_type: str | None = None
     created_at: datetime
     updated_at: datetime
     error: ErrorDetail | None = None
@@ -83,6 +99,8 @@ class RenderJobSummary(BaseModel):
     status: JobStatus
     preset: str
     style: str
+    mode: str = "exterior"
+    room_type: str | None = None
     created_at: datetime
     updated_at: datetime
     fidelity_score: float | None = None

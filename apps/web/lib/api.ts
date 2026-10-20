@@ -8,6 +8,14 @@ export const API_BASE: string =
 
 export type Preset = "daylight" | "dusk" | "night";
 export type Style = "modern" | "minimalist" | "warm";
+export type Mode = "exterior" | "interior";
+export type InteriorStyle =
+  | "modern"
+  | "scandinavian"
+  | "minimalist"
+  | "luxury"
+  | "traditional";
+export type RoomType = "living" | "bedroom" | "kitchen" | "dining" | "office";
 export type RenderStatus = "queued" | "processing" | "succeeded" | "failed";
 
 export interface ApiErrorDetail {
@@ -40,6 +48,8 @@ export interface RenderItem {
   status: RenderStatus;
   preset: Preset;
   style: Style;
+  mode: Mode;
+  room_type: RoomType | null;
   created_at: string;
   updated_at: string;
   fidelity_score: number | null;
@@ -64,6 +74,8 @@ export interface CreateRenderResponse {
   status: RenderStatus;
   preset: Preset;
   style: Style;
+  mode: Mode;
+  room_type: RoomType | null;
   created_at: string;
 }
 
@@ -129,14 +141,18 @@ export function getHealth(): Promise<Health> {
 export function createRender(
   file: File,
   preset: Preset,
-  style: Style,
+  style: Style | InteriorStyle,
   reference?: File | null,
   accessToken?: string,
+  mode: Mode = "exterior",
+  roomType?: RoomType | null,
 ): Promise<CreateRenderResponse> {
   const form = new FormData();
   form.append("file", file);
   form.append("preset", preset);
   form.append("style", style);
+  form.append("mode", mode);
+  if (mode === "interior" && roomType) form.append("room_type", roomType);
   if (reference) form.append("reference", reference);
   return request<CreateRenderResponse>("/api/v1/renders", {
     method: "POST",

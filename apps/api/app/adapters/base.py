@@ -21,10 +21,16 @@ class RenderAdapter(ABC):
         preset: str,
         style: str,
         reference_path: Path | None = None,
+        mode: str = "exterior",
+        room_type: str | None = None,
     ) -> bytes:
         """Render sketch+edge map into image bytes (PNG).
 
         reference_path, when given, is a *style* reference: materials,
         colors, mood only — never geometry. Geometry always comes from
         the sketch.
+
+        mode="interior": the "sketch" is a photo of a blank room and the
+        output furnishes it (structure lock) instead of rendering a
+        building exterior; room_type selects the furniture program.
         """

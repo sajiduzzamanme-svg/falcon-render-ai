@@ -191,7 +191,9 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             className="max-h-[65vh] w-full object-contain bg-slate-50"
           />
           <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Sketch — geometry source
+            {detail.mode === "interior"
+              ? "Room photo — structure source"
+              : "Sketch — geometry source"}
           </figcaption>
         </figure>
 
@@ -202,7 +204,9 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
             className="max-h-[65vh] w-full object-contain bg-slate-50"
           />
           <figcaption className="border-t border-slate-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Geometry lock — edge map extracted from your sketch
+            {detail.mode === "interior"
+              ? "Structure lock — edge map extracted from your room photo"
+              : "Geometry lock — edge map extracted from your sketch"}
           </figcaption>
         </figure>
 
@@ -274,14 +278,25 @@ export default function RenderJob({ initial }: { initial: RenderDetail }) {
           <CompareSlider
             beforeSrc={fileUrl(detail.artifacts.sketch)}
             afterSrc={fileUrl(afterSrc)}
-            beforeLabel="Sketch"
-            afterLabel="Render"
+            beforeLabel={detail.mode === "interior" ? "Blank room" : "Sketch"}
+            afterLabel={detail.mode === "interior" ? "Design" : "Render"}
           />
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
         <StatusBadge status={detail.status} />
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+            detail.mode === "interior"
+              ? "bg-violet-100 text-violet-800 ring-violet-300"
+              : "bg-sky-100 text-sky-800 ring-sky-300"
+          }`}
+        >
+          {detail.mode === "interior"
+            ? `Interior${detail.room_type ? ` · ${detail.room_type}` : ""}`
+            : "Exterior"}
+        </span>
         <span className="text-slate-600">
           Preset: <strong className="font-semibold capitalize text-slate-900">{detail.preset}</strong>
         </span>

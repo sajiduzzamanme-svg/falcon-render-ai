@@ -26,6 +26,8 @@ _FIELD_MAP = {
     "status": "status",
     "preset": "lighting",
     "style": "style",
+    "mode": "mode",
+    "room_type": "room_type",
     "user_id": "user_id",
     "sketch_path": "sketch_path",
     "edge_path": "edge_path",
@@ -61,6 +63,10 @@ def _to_record(row: dict) -> dict:
         "status": row["status"],
         "preset": row.get("lighting"),
         "style": row.get("style"),
+        # mode/room_type columns arrive with migration 0003; rows created
+        # before it read back as exterior.
+        "mode": row.get("mode") or "exterior",
+        "room_type": row.get("room_type"),
         "created_at": created_at,
         # No updated_at column in the jobs table (see module docstring).
         "updated_at": created_at,
@@ -86,6 +92,8 @@ def create(
     preset: str,
     style: str,
     user_id: str | None = None,
+    mode: str = "exterior",
+    room_type: str | None = None,
     *,
     client: SupabaseClient | None = None,
 ) -> dict:
@@ -99,10 +107,27 @@ def create(
         "status": JobStatus.QUEUED.value,
         "lighting": preset,
         "style": style,
+        "mode": mode,
+        "room_type": room_type,
         "sketch_path": f"{job_id}/sketch.png",
         "edge_path": f"{job_id}/edge.png",
     }
-    rows = c.insert(TABLE, payload)
+    try:
+        rows = c.insert(TABLE, payload)
+    except SupabaseError as exc:
+        # Migration 0003 (mode/room_type columns) not applied yet: retry
+        # without the new columns so exterior jobs keep working. Interior
+        # jobs created in this window read back as exterior — acceptable
+        # until the one-line migration is run. Any other error re-raises.
+        msg = str(exc)
+        if "mode" not in msg and "room_type" not in msg and "PGRST204" not in msg:
+            raise
+        legacy = {k: v for k, v in payload.items() if k not in ("mode", "room_type")}
+        rows = c.insert(TABLE, legacy)
+        record = _to_record(rows[0]) if rows else {}
+        record["mode"] = mode
+        record["room_type"] = room_type
+        return record
     if not rows:
         raise SupabaseError("Supabase insert returned no row")
     return _to_record(rows[0])

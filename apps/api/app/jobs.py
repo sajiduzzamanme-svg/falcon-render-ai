@@ -28,13 +28,21 @@ def _job_file(job_id: str) -> Path:
     return _job_dir(job_id) / "job.json"
 
 
-def create(preset: str, style: str, user_id: str | None = None) -> dict:
+def create(
+    preset: str,
+    style: str,
+    user_id: str | None = None,
+    mode: str = "exterior",
+    room_type: str | None = None,
+) -> dict:
     job_id = uuid.uuid4().hex
     record = {
         "id": job_id,
         "status": JobStatus.QUEUED.value,
         "preset": preset,
         "style": style,
+        "mode": mode,
+        "room_type": room_type,
         "user_id": user_id,
         "created_at": _now(),
         "updated_at": _now(),

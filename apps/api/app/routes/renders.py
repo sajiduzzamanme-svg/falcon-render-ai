@@ -21,7 +21,10 @@ from ..fidelity import FidelityError, fidelity_score
 from ..geometry import GeometryError, extract_edges
 from ..job_store import jobs
 from ..schemas import (
+    INTERIOR_STYLES,
+    MODES,
     PRESETS,
+    ROOM_TYPES,
     STYLES,
     JobStatus,
     RenderJobResponse,
@@ -61,6 +64,8 @@ def _job_to_summary(record: dict) -> dict:
         "status": record["status"],
         "preset": record["preset"],
         "style": record["style"],
+        "mode": record.get("mode") or "exterior",
+        "room_type": record.get("room_type"),
         "created_at": record["created_at"],
         "updated_at": record["updated_at"],
         "fidelity_score": record.get("fidelity_score"),
@@ -179,16 +184,39 @@ async def create_render(
     file: UploadFile = File(...),  # noqa: B008 — standard FastAPI dependency idiom
     preset: str = Form(...),
     style: str = Form(...),
+    mode: str = Form("exterior"),
+    room_type: str | None = Form(None),
     reference: Annotated[UploadFile | None, File()] = None,
     user: Annotated[dict | None, Depends(get_optional_user)] = None,
 ) -> JSONResponse:
+    if mode not in MODES:
+        return error_response(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_MODE",
+            f"mode must be one of: {', '.join(MODES)}.",
+        )
     if preset not in PRESETS:
         return error_response(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "INVALID_PRESET",
             f"preset must be one of: {', '.join(PRESETS)}.",
         )
-    if style not in STYLES:
+    if mode == "interior":
+        if style not in INTERIOR_STYLES:
+            return error_response(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INVALID_STYLE",
+                f"interior style must be one of: {', '.join(INTERIOR_STYLES)}.",
+            )
+        if room_type is None:
+            room_type = "living"
+        if room_type not in ROOM_TYPES:
+            return error_response(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "INVALID_ROOM_TYPE",
+                f"room_type must be one of: {', '.join(ROOM_TYPES)}.",
+            )
+    elif style not in STYLES:
         return error_response(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "INVALID_STYLE",
@@ -201,7 +229,11 @@ async def create_render(
         return validated
 
     record = jobs.create(
-        preset=preset, style=style, user_id=user["id"] if user else None
+        preset=preset,
+        style=style,
+        user_id=user["id"] if user else None,
+        mode=mode,
+        room_type=room_type if mode == "interior" else None,
     )
     job_id = record["id"]
     try:
@@ -227,6 +259,8 @@ async def create_render(
             "status": JobStatus.QUEUED.value,
             "preset": preset,
             "style": style,
+            "mode": mode,
+            "room_type": room_type if mode == "interior" else None,
             "created_at": record["created_at"],
         },
     )
@@ -291,6 +325,8 @@ def _run_generation(
                 record["preset"],
                 record["style"],
                 reference_path=reference_arg,
+                mode=record.get("mode") or "exterior",
+                room_type=record.get("room_type"),
             )
             try:
                 score = fidelity_score(edge_path, image_bytes)

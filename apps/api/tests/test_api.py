@@ -328,3 +328,106 @@ def test_upload_invalid_reference_rejected(client: TestClient) -> None:
     )
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "INVALID_UPLOAD"
+
+
+def _upload_interior(
+    client: TestClient,
+    content: bytes,
+    style: str = "scandinavian",
+    room_type: str = "bedroom",
+):
+    return client.post(
+        "/api/v1/renders",
+        files={"file": ("room.png", content, "application/octet-stream")},
+        data={
+            "preset": "daylight",
+            "style": style,
+            "mode": "interior",
+            "room_type": room_type,
+        },
+    )
+
+
+def test_interior_upload_creates_job_with_mode(client: TestClient) -> None:
+    resp = _upload_interior(client, _png_bytes())
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["mode"] == "interior"
+    assert body["room_type"] == "bedroom"
+    # Detail + list surface the mode too.
+    detail = client.get(f"/api/v1/renders/{body['id']}").json()
+    assert detail["mode"] == "interior"
+    assert detail["room_type"] == "bedroom"
+    items = client.get("/api/v1/renders").json()["items"]
+    assert items[0]["mode"] == "interior"
+
+
+def test_interior_default_room_type_is_living(client: TestClient) -> None:
+    resp = client.post(
+        "/api/v1/renders",
+        files={"file": ("room.png", _png_bytes(), "application/octet-stream")},
+        data={"preset": "daylight", "style": "modern", "mode": "interior"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["room_type"] == "living"
+
+
+def test_interior_exterior_style_rejected(client: TestClient) -> None:
+    # "warm" is an exterior-only style.
+    resp = _upload_interior(client, _png_bytes(), style="warm")
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_STYLE"
+
+
+def test_interior_bad_room_type_rejected(client: TestClient) -> None:
+    resp = _upload_interior(client, _png_bytes(), room_type="garage")
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_ROOM_TYPE"
+
+
+def test_bad_mode_rejected(client: TestClient) -> None:
+    resp = client.post(
+        "/api/v1/renders",
+        files={"file": ("x.png", _png_bytes(), "application/octet-stream")},
+        data={"preset": "daylight", "style": "modern", "mode": "aerial"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_MODE"
+
+
+def test_interior_generate_passes_mode_to_adapter(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from app.adapters.openrouter import OpenRouterRenderAdapter
+
+    captured: dict = {}
+
+    def fake_generate(self, *a, **k):
+        captured.update(k)
+        return _png_bytes(400, 300)
+
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "or-key")
+    monkeypatch.setattr(OpenRouterRenderAdapter, "generate", fake_generate)
+    job_id = _upload_interior(client, _png_bytes()).json()["id"]
+    resp = client.post(f"/api/v1/renders/{job_id}/generate")
+    assert resp.status_code == 202
+    body = {}
+    for _ in range(100):
+        body = client.get(f"/api/v1/renders/{job_id}").json()
+        if body["status"] == "succeeded":
+            break
+        time.sleep(0.05)
+    assert body["status"] == "succeeded"
+    assert captured.get("mode") == "interior"
+    assert captured.get("room_type") == "bedroom"
+
+
+def test_interior_prompt_keeps_structure() -> None:
+    from app.adapters.gemini import interior_prompt
+
+    text = interior_prompt("kitchen", "luxury", "daylight")
+    assert "kitchen" in text
+    assert "exactly unchanged" in text
+    assert "marble" in text  # luxury direction

@@ -118,7 +118,20 @@ export default function GalleryPage() {
                   }}
                 />
                 <div className="space-y-2 border-t border-slate-100 px-4 py-3">
-                  <StatusBadge status={item.status} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={item.status} />
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+                        item.mode === "interior"
+                          ? "bg-violet-100 text-violet-800 ring-violet-300"
+                          : "bg-sky-100 text-sky-800 ring-sky-300"
+                      }`}
+                    >
+                      {item.mode === "interior"
+                        ? `Interior${item.room_type ? ` · ${item.room_type}` : ""}`
+                        : "Exterior"}
+                    </span>
+                  </div>
                   <p className="text-sm text-slate-600">
                     <span className="font-medium capitalize text-slate-900">
                       {item.preset}
